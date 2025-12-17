@@ -3,10 +3,17 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { createClient } = require('webdav');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// WebDAV client loader (ESM module)
+let createClient = null;
+async function loadWebDAV() {
+  const webdav = await import('webdav');
+  createClient = webdav.createClient;
+}
+loadWebDAV();
 
 // CORS configuration - Allow all origins for development
 app.use(cors({
@@ -103,6 +110,9 @@ app.get('/api/music/:filename', (req, res) => {
 // Get list of uploaded files
 app.get('/api/files', (req, res) => {
   try {
+    if (!fs.existsSync(uploadDir)) {
+      return res.json({ success: true, files: [] });
+    }
     const files = fs.readdirSync(uploadDir).map(filename => {
       const stat = fs.statSync(path.join(uploadDir, filename));
       const originalName = filename.replace(/^\d+-\d+-/, '');
@@ -138,6 +148,10 @@ app.delete('/api/files/:filename', (req, res) => {
 // WebDAV connection
 app.post('/api/webdav/connect', async (req, res) => {
   try {
+    if (!createClient) {
+      return res.status(500).json({ success: false, error: 'WebDAV module not loaded yet, please try again' });
+    }
+
     const { url, username, password } = req.body;
     const clientId = `${url}-${username}`;
 
