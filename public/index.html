@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WeiRuan Music - Modern Web Music Player</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Background Effects -->
+    <div class="bg-effects">
+      <div class="particle-container" id="particles"></div>
+      <div class="grid-overlay"></div>
+      <div class="glow-orb orb-1"></div>
+      <div class="glow-orb orb-2"></div>
+      <div class="glow-orb orb-3"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 100 100" class="logo-svg">
+            <defs>
+              <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#00f5ff"/>
+                <stop offset="50%" style="stop-color:#8b5cf6"/>
+                <stop offset="100%" style="stop-color:#f472b6"/>
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="45" fill="none" stroke="url(#logoGradient)" stroke-width="2"/>
+            <path d="M35 25 L35 75 L75 50 Z" fill="url(#logoGradient)"/>
+          </svg>
+        </div>
+        <span class="logo-text">WEIRUAN<span class="accent">MUSIC</span></span>
+      </div>
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="player">
+          <span class="tab-icon">&#9654;</span>
+          <span>Player</span>
+        </button>
+        <button class="nav-tab" data-tab="playlist">
+          <span class="tab-icon">&#9776;</span>
+          <span>Playlist</span>
+        </button>
+        <button class="nav-tab" data-tab="cloud">
+          <span class="tab-icon">&#9729;</span>
+          <span>Cloud</span>
+        </button>
+        <button class="nav-tab" data-tab="equalizer">
+          <span class="tab-icon">&#9836;</span>
+          <span>Equalizer</span>
+        </button>
+      </nav>
+      <div class="header-actions">
+        <button class="btn-icon" id="settingsBtn" title="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Player Tab -->
+      <section class="tab-content active" id="player-tab">
+        <div class="player-wrapper">
+          <!-- Visualizer -->
+          <div class="visualizer-container">
+            <canvas id="visualizer"></canvas>
+            <div class="album-art-container">
+              <div class="album-art" id="albumArt">
+                <div class="default-art">
+                  <svg viewBox="0 0 100 100">
+                    <defs>
+                      <linearGradient id="discGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#1a1a2e"/>
+                        <stop offset="100%" style="stop-color:#16213e"/>
+                      </linearGradient>
+                    </defs>
+                    <circle cx="50" cy="50" r="48" fill="url(#discGradient)" stroke="#00f5ff" stroke-width="1"/>
+                    <circle cx="50" cy="50" r="35" fill="none" stroke="#00f5ff" stroke-width="0.5" opacity="0.5"/>
+                    <circle cx="50" cy="50" r="25" fill="none" stroke="#8b5cf6" stroke-width="0.5" opacity="0.5"/>
+                    <circle cx="50" cy="50" r="15" fill="none" stroke="#f472b6" stroke-width="0.5" opacity="0.5"/>
+                    <circle cx="50" cy="50" r="8" fill="#0f0f1a"/>
+                    <circle cx="50" cy="50" r="3" fill="#00f5ff"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="album-glow"></div>
+            </div>
+          </div>
+
+          <!-- Track Info -->
+          <div class="track-info">
+            <h2 class="track-title" id="trackTitle">No Track Selected</h2>
+            <p class="track-artist" id="trackArtist">Select a track to play</p>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="progress-container">
+            <span class="time current" id="currentTime">0:00</span>
+            <div class="progress-bar" id="progressBar">
+              <div class="progress-track">
+                <div class="progress-fill" id="progressFill"></div>
+                <div class="progress-handle" id="progressHandle"></div>
+              </div>
+            </div>
+            <span class="time duration" id="duration">0:00</span>
+          </div>
+
+          <!-- Controls -->
+          <div class="controls">
+            <div class="control-group secondary">
+              <button class="btn-control" id="shuffleBtn" title="Shuffle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="control-group primary">
+              <button class="btn-control" id="prevBtn" title="Previous">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                </svg>
+              </button>
+              <button class="btn-control play-btn" id="playBtn" title="Play">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="play-icon">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" class="pause-icon" style="display:none">
+                  <path d="M6 4h4v16H6zM14 4h4v16h-4z"/>
+                </svg>
+              </button>
+              <button class="btn-control" id="nextBtn" title="Next">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="control-group secondary">
+              <button class="btn-control" id="repeatBtn" title="Repeat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 1l4 4-4 4"/>
+                  <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                  <path d="M7 23l-4-4 4-4"/>
+                  <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Volume Control -->
+          <div class="volume-container">
+            <button class="btn-icon volume-icon" id="volumeBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="volume-high">
+                <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="volume-mute" style="display:none">
+                <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+                <line x1="23" y1="9" x2="17" y2="15"/>
+                <line x1="17" y1="9" x2="23" y2="15"/>
+              </svg>
+            </button>
+            <div class="volume-slider">
+              <input type="range" id="volumeSlider" min="0" max="100" value="80">
+              <div class="volume-fill" id="volumeFill"></div>
+            </div>
+            <span class="volume-value" id="volumeValue">80%</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Playlist Tab -->
+      <section class="tab-content" id="playlist-tab">
+        <div class="playlist-wrapper">
+          <div class="playlist-header">
+            <h2>Playlist</h2>
+            <div class="playlist-actions">
+              <label class="btn-primary upload-btn">
+                <input type="file" id="fileInput" multiple accept="audio/*" hidden>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Upload Music</span>
+              </label>
+              <button class="btn-secondary" id="clearPlaylistBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                <span>Clear All</span>
+              </button>
+            </div>
+          </div>
+          <div class="playlist-stats">
+            <span id="trackCount">0 tracks</span>
+            <span id="totalDuration">0:00 total</span>
+          </div>
+          <div class="playlist-container" id="playlistContainer">
+            <div class="empty-playlist">
+              <div class="empty-icon">
+                <svg viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                  <path d="M30 35 L30 65 L50 50 Z" fill="currentColor" opacity="0.3"/>
+                  <path d="M55 35 L55 65 L75 50 Z" fill="currentColor" opacity="0.3"/>
+                </svg>
+              </div>
+              <p>No tracks in playlist</p>
+              <span>Upload music or connect to cloud storage</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Cloud Tab -->
+      <section class="tab-content" id="cloud-tab">
+        <div class="cloud-wrapper">
+          <div class="cloud-connect">
+            <h2>Cloud Storage</h2>
+            <p class="cloud-description">Connect to your WebDAV-compatible cloud storage (Nextcloud, ownCloud, etc.)</p>
+
+            <form class="connect-form" id="webdavForm">
+              <div class="form-group">
+                <label for="webdavUrl">WebDAV URL</label>
+                <input type="url" id="webdavUrl" placeholder="https://cloud.example.com/remote.php/dav/files/username/" required>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="webdavUser">Username</label>
+                  <input type="text" id="webdavUser" placeholder="Username" required>
+                </div>
+                <div class="form-group">
+                  <label for="webdavPass">Password</label>
+                  <input type="password" id="webdavPass" placeholder="Password" required>
+                </div>
+              </div>
+              <button type="submit" class="btn-primary full-width">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+                <span>Connect</span>
+              </button>
+            </form>
+          </div>
+
+          <div class="cloud-browser" id="cloudBrowser" style="display:none">
+            <div class="browser-header">
+              <button class="btn-icon" id="backBtn" title="Go back">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+              </button>
+              <div class="current-path" id="currentPath">/</div>
+              <button class="btn-secondary" id="disconnectBtn">Disconnect</button>
+            </div>
+            <div class="file-list" id="fileList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Equalizer Tab -->
+      <section class="tab-content" id="equalizer-tab">
+        <div class="equalizer-wrapper">
+          <h2>Audio Equalizer</h2>
+          <p class="eq-description">Customize your audio experience</p>
+
+          <div class="eq-presets">
+            <button class="preset-btn active" data-preset="flat">Flat</button>
+            <button class="preset-btn" data-preset="rock">Rock</button>
+            <button class="preset-btn" data-preset="pop">Pop</button>
+            <button class="preset-btn" data-preset="jazz">Jazz</button>
+            <button class="preset-btn" data-preset="classical">Classical</button>
+            <button class="preset-btn" data-preset="electronic">Electronic</button>
+            <button class="preset-btn" data-preset="bass">Bass Boost</button>
+            <button class="preset-btn" data-preset="vocal">Vocal</button>
+          </div>
+
+          <div class="eq-sliders">
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-32" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">32Hz</span>
+              <span class="eq-value" data-for="eq-32">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-64" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">64Hz</span>
+              <span class="eq-value" data-for="eq-64">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-125" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">125Hz</span>
+              <span class="eq-value" data-for="eq-125">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-250" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">250Hz</span>
+              <span class="eq-value" data-for="eq-250">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-500" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">500Hz</span>
+              <span class="eq-value" data-for="eq-500">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-1k" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">1kHz</span>
+              <span class="eq-value" data-for="eq-1k">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-2k" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">2kHz</span>
+              <span class="eq-value" data-for="eq-2k">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-4k" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">4kHz</span>
+              <span class="eq-value" data-for="eq-4k">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-8k" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">8kHz</span>
+              <span class="eq-value" data-for="eq-8k">0dB</span>
+            </div>
+            <div class="eq-band">
+              <input type="range" class="eq-slider" id="eq-16k" min="-12" max="12" value="0" orient="vertical">
+              <span class="eq-label">16kHz</span>
+              <span class="eq-value" data-for="eq-16k">0dB</span>
+            </div>
+          </div>
+
+          <div class="audio-effects">
+            <h3>Audio Effects</h3>
+            <div class="effect-controls">
+              <div class="effect-item">
+                <span class="effect-label">Stereo Widener</span>
+                <input type="range" class="effect-slider" id="stereoWidth" min="0" max="100" value="50">
+                <span class="effect-value" id="stereoWidthValue">50%</span>
+              </div>
+              <div class="effect-item">
+                <span class="effect-label">Bass Boost</span>
+                <input type="range" class="effect-slider" id="bassBoost" min="0" max="100" value="0">
+                <span class="effect-value" id="bassBoostValue">0%</span>
+              </div>
+              <div class="effect-item">
+                <span class="effect-label">Reverb</span>
+                <input type="range" class="effect-slider" id="reverb" min="0" max="100" value="0">
+                <span class="effect-value" id="reverbValue">0%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Mini Player (always visible at bottom) -->
+    <footer class="mini-player" id="miniPlayer">
+      <div class="mini-track">
+        <div class="mini-art" id="miniArt"></div>
+        <div class="mini-info">
+          <span class="mini-title" id="miniTitle">No Track</span>
+          <span class="mini-artist" id="miniArtist">-</span>
+        </div>
+      </div>
+      <div class="mini-controls">
+        <button class="btn-mini" id="miniPrev">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+        </button>
+        <button class="btn-mini play" id="miniPlay">
+          <svg viewBox="0 0 24 24" fill="currentColor" class="play-icon"><path d="M8 5v14l11-7z"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor" class="pause-icon" style="display:none"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+        </button>
+        <button class="btn-mini" id="miniNext">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+      </div>
+      <div class="mini-progress">
+        <div class="mini-progress-bar" id="miniProgressBar">
+          <div class="mini-progress-fill" id="miniProgressFill"></div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="btn-icon close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="setting-item">
+          <span>Theme</span>
+          <select id="themeSelect">
+            <option value="cyber">Cyber Neon</option>
+            <option value="midnight">Midnight Blue</option>
+            <option value="sunset">Sunset Glow</option>
+            <option value="matrix">Matrix Green</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Visualizer Style</span>
+          <select id="visualizerSelect">
+            <option value="bars">Frequency Bars</option>
+            <option value="wave">Waveform</option>
+            <option value="circular">Circular</option>
+            <option value="particles">Particles</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>Auto-play next track</span>
+          <label class="toggle">
+            <input type="checkbox" id="autoplayToggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <span>Show notifications</span>
+          <label class="toggle">
+            <input type="checkbox" id="notifyToggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <span>Keyboard shortcuts</span>
+          <label class="toggle">
+            <input type="checkbox" id="shortcutsToggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="shortcuts-info">
+        <h4>Keyboard Shortcuts</h4>
+        <div class="shortcut"><kbd>Space</kbd> Play/Pause</div>
+        <div class="shortcut"><kbd>←</kbd> Previous track</div>
+        <div class="shortcut"><kbd>→</kbd> Next track</div>
+        <div class="shortcut"><kbd>↑</kbd> Volume up</div>
+        <div class="shortcut"><kbd>↓</kbd> Volume down</div>
+        <div class="shortcut"><kbd>M</kbd> Mute/Unmute</div>
+        <div class="shortcut"><kbd>S</kbd> Shuffle</div>
+        <div class="shortcut"><kbd>R</kbd> Repeat mode</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Container -->
+  <div class="notifications" id="notifications"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
