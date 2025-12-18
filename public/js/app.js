@@ -27,6 +27,12 @@ class MusicPlayer {
     this.currentPath = '/';
     this.pathHistory = ['/'];
 
+    // Google Drive
+    this.gdriveClientId = null;
+    this.gdriveConfigured = false;
+    this.gdriveFolderId = 'root';
+    this.gdriveFolderHistory = ['root'];
+
     // Visualizer
     this.visualizerStyle = 'bars';
     this.visualizerCanvas = null;
@@ -68,6 +74,9 @@ class MusicPlayer {
 
     // Load files from server
     await this.loadServerFiles();
+
+    // Initialize Google Drive
+    this.initGoogleDrive();
   }
 
   loadSettings() {
@@ -238,6 +247,25 @@ class MusicPlayer {
     document.getElementById('autoplayToggle').checked = this.settings.autoplay;
     document.getElementById('notifyToggle').checked = this.settings.notifications;
     document.getElementById('shortcutsToggle').checked = this.settings.shortcuts;
+
+    // Cloud type selector
+    document.querySelectorAll('.cloud-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.switchCloudType(btn.dataset.type));
+    });
+
+    // Google Drive config form
+    document.getElementById('gdriveConfigForm')?.addEventListener('submit', (e) => this.configureGoogleDrive(e));
+    document.getElementById('googleSignInBtn')?.addEventListener('click', () => this.signInGoogleDrive());
+    document.getElementById('gdriveReconfigure')?.addEventListener('click', () => this.showGdriveConfig());
+    document.getElementById('gdriveBackBtn')?.addEventListener('click', () => this.navigateGdriveBack());
+    document.getElementById('gdriveDisconnect')?.addEventListener('click', () => this.disconnectGoogleDrive());
+
+    // Listen for Google OAuth callback
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'gdrive-connected') {
+        this.onGoogleDriveConnected(e.data.clientId, e.data.email);
+      }
+    });
   }
 
   setupKeyboardShortcuts() {
@@ -1082,6 +1110,225 @@ class MusicPlayer {
       i++;
     }
     return `${bytes.toFixed(1)} ${units[i]}`;
+  }
+
+  // ==================== Google Drive Methods ====================
+
+  async initGoogleDrive() {
+    // Set redirect URI in the help section
+    const redirectUri = `${window.location.origin}/api/gdrive/callback`;
+    const redirectUriEl = document.getElementById('redirectUri');
+    if (redirectUriEl) {
+      redirectUriEl.textContent = redirectUri;
+    }
+
+    // Check if Google Drive is configured
+    try {
+      const response = await fetch('/api/gdrive/status');
+      const result = await response.json();
+      if (result.configured) {
+        this.gdriveConfigured = true;
+        this.showGdriveConnect();
+      }
+    } catch (error) {
+      console.error('Failed to check Google Drive status:', error);
+    }
+  }
+
+  switchCloudType(type) {
+    document.querySelectorAll('.cloud-type-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.type === type);
+    });
+
+    document.getElementById('webdav-section').style.display = type === 'webdav' ? 'block' : 'none';
+    document.getElementById('gdrive-section').style.display = type === 'gdrive' ? 'block' : 'none';
+  }
+
+  async configureGoogleDrive(e) {
+    e.preventDefault();
+
+    const clientId = document.getElementById('gdriveClientId').value;
+    const clientSecret = document.getElementById('gdriveClientSecret').value;
+    const redirectUri = `${window.location.origin}/api/gdrive/callback`;
+
+    try {
+      const response = await fetch('/api/gdrive/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, clientSecret, redirectUri })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        this.gdriveConfigured = true;
+        this.showGdriveConnect();
+        this.showNotification('Google Drive configured successfully', 'success');
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`Configuration failed: ${error.message}`, 'error');
+    }
+  }
+
+  showGdriveConfig() {
+    document.getElementById('gdriveConfig').style.display = 'block';
+    document.getElementById('gdriveConnect').style.display = 'none';
+    document.getElementById('gdriveBrowser').style.display = 'none';
+  }
+
+  showGdriveConnect() {
+    document.getElementById('gdriveConfig').style.display = 'none';
+    document.getElementById('gdriveConnect').style.display = 'block';
+    document.getElementById('gdriveBrowser').style.display = 'none';
+  }
+
+  async signInGoogleDrive() {
+    try {
+      const response = await fetch('/api/gdrive/auth-url');
+      const result = await response.json();
+
+      if (result.success) {
+        // Open OAuth popup
+        const width = 600;
+        const height = 700;
+        const left = (window.innerWidth - width) / 2;
+        const top = (window.innerHeight - height) / 2;
+        window.open(
+          result.authUrl,
+          'Google Sign In',
+          `width=${width},height=${height},left=${left},top=${top}`
+        );
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`Sign in failed: ${error.message}`, 'error');
+    }
+  }
+
+  onGoogleDriveConnected(clientId, email) {
+    this.gdriveClientId = clientId;
+    document.getElementById('gdriveEmail').textContent = email;
+    document.getElementById('gdriveConfig').style.display = 'none';
+    document.getElementById('gdriveConnect').style.display = 'none';
+    document.getElementById('gdriveBrowser').style.display = 'block';
+    this.loadGoogleDriveFolder('root');
+    this.showNotification(`Connected as ${email}`, 'success');
+  }
+
+  async loadGoogleDriveFolder(folderId) {
+    try {
+      const response = await fetch(`/api/gdrive/list?clientId=${encodeURIComponent(this.gdriveClientId)}&folderId=${encodeURIComponent(folderId)}`);
+      const result = await response.json();
+
+      if (result.success) {
+        this.gdriveFolderId = folderId;
+        this.renderGdriveFileList(result.items);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`Failed to load folder: ${error.message}`, 'error');
+    }
+  }
+
+  renderGdriveFileList(items) {
+    const container = document.getElementById('gdriveFileList');
+
+    // Sort: folders first, then files
+    items.sort((a, b) => {
+      if (a.type === 'directory' && b.type !== 'directory') return -1;
+      if (a.type !== 'directory' && b.type === 'directory') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    if (items.length === 0) {
+      container.innerHTML = `
+        <div class="empty-folder" style="padding: 2rem; text-align: center; color: var(--text-muted);">
+          <p>This folder is empty</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = items.map(item => `
+      <div class="file-item" data-type="${item.type}" data-id="${item.id}" data-audio="${item.isAudio}">
+        <div class="file-icon ${item.type === 'directory' ? 'folder' : item.isAudio ? 'audio' : ''}">
+          ${item.type === 'directory' ? `
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+            </svg>
+          ` : `
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
+          `}
+        </div>
+        <span class="file-name">${item.name}</span>
+        <span class="file-size">${item.type === 'directory' ? '' : this.formatFileSize(item.size)}</span>
+      </div>
+    `).join('');
+
+    // Add click handlers
+    container.querySelectorAll('.file-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const type = item.dataset.type;
+        const id = item.dataset.id;
+        const isAudio = item.dataset.audio === 'true';
+        const name = item.querySelector('.file-name').textContent;
+
+        if (type === 'directory') {
+          this.gdriveFolderHistory.push(id);
+          this.loadGoogleDriveFolder(id);
+        } else if (isAudio) {
+          this.addGoogleDriveTrack(id, name);
+        }
+      });
+    });
+  }
+
+  navigateGdriveBack() {
+    if (this.gdriveFolderHistory.length > 1) {
+      this.gdriveFolderHistory.pop();
+      const previousFolder = this.gdriveFolderHistory[this.gdriveFolderHistory.length - 1];
+      this.loadGoogleDriveFolder(previousFolder);
+    }
+  }
+
+  addGoogleDriveTrack(fileId, name) {
+    const track = {
+      id: `gdrive-${fileId}`,
+      name: name,
+      path: `/api/gdrive/stream?clientId=${encodeURIComponent(this.gdriveClientId)}&fileId=${encodeURIComponent(fileId)}`,
+      type: 'gdrive'
+    };
+
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`Added: ${name}`, 'success');
+    }
+  }
+
+  async disconnectGoogleDrive() {
+    if (this.gdriveClientId) {
+      try {
+        await fetch('/api/gdrive/disconnect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: this.gdriveClientId })
+        });
+      } catch (error) {
+        console.error('Failed to disconnect:', error);
+      }
+    }
+    this.gdriveClientId = null;
+    this.gdriveFolderId = 'root';
+    this.gdriveFolderHistory = ['root'];
+    this.showGdriveConnect();
+    this.showNotification('Disconnected from Google Drive', 'info');
   }
 }
 
