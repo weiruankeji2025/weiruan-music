@@ -56,6 +56,11 @@ class MusicPlayer {
     this.baiduPath = '/';
     this.baiduPathHistory = ['/'];
 
+    // Alist
+    this.alistClientId = null;
+    this.alistPath = '/';
+    this.alistPathHistory = ['/'];
+
     // Visualizer
     this.visualizerStyle = 'bars';
     this.visualizerCanvas = null;
@@ -67,7 +72,7 @@ class MusicPlayer {
       autoplay: true,
       notifications: true,
       shortcuts: true,
-      theme: 'cyber'
+      theme: 'dark'
     };
 
     // EQ Presets
@@ -312,6 +317,11 @@ class MusicPlayer {
     document.getElementById('baiduReconfigure')?.addEventListener('click', () => this.showBaiduConfig());
     document.getElementById('baiduBackBtn')?.addEventListener('click', () => this.navigateBaiduBack());
     document.getElementById('baiduDisconnect')?.addEventListener('click', () => this.disconnectBaidu());
+
+    // Alist
+    document.getElementById('alistConfigForm')?.addEventListener('submit', (e) => this.connectAlist(e));
+    document.getElementById('alistBackBtn')?.addEventListener('click', () => this.navigateAlistBack());
+    document.getElementById('alistDisconnect')?.addEventListener('click', () => this.disconnectAlist());
 
     // 设置重定向URI
     const baseUrl = `${window.location.protocol}//${window.location.host}`;
@@ -1218,8 +1228,12 @@ class MusicPlayer {
       btn.classList.toggle('active', btn.dataset.type === type);
     });
 
-    document.getElementById('webdav-section').style.display = type === 'webdav' ? 'block' : 'none';
-    document.getElementById('gdrive-section').style.display = type === 'gdrive' ? 'block' : 'none';
+    // 隐藏所有云存储区域
+    const sections = ['webdav', 'gdrive', 'onedrive', 'dropbox', 'aliyun', 'baidu', 'alist'];
+    sections.forEach(section => {
+      const el = document.getElementById(`${section}-section`);
+      if (el) el.style.display = section === type ? 'block' : 'none';
+    });
   }
 
   async configureGoogleDrive(e) {
@@ -1897,6 +1911,121 @@ class MusicPlayer {
     this.baiduPathHistory = ['/'];
     this.showBaiduConfig();
     this.showNotification('已断开百度网盘连接', 'info');
+  }
+
+  // ==================== Alist ====================
+  async connectAlist(e) {
+    e.preventDefault();
+    const url = document.getElementById('alistUrl').value;
+    const username = document.getElementById('alistUser').value;
+    const password = document.getElementById('alistPass').value;
+
+    try {
+      const response = await fetch('/api/alist/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, username, password })
+      });
+      const result = await response.json();
+      if (result.success) {
+        this.alistClientId = result.clientId;
+        document.getElementById('alistConfig').style.display = 'none';
+        document.getElementById('alistBrowser').style.display = 'block';
+        this.loadAlistFolder('/');
+        this.showNotification('已连接 Alist 服务器', 'success');
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`连接失败：${error.message}`, 'error');
+    }
+  }
+
+  async loadAlistFolder(path) {
+    try {
+      const response = await fetch(`/api/alist/list?clientId=${encodeURIComponent(this.alistClientId)}&path=${encodeURIComponent(path)}`);
+      const result = await response.json();
+      if (result.success) {
+        this.alistPath = path;
+        document.getElementById('alistPath').textContent = path || '/';
+        this.renderAlistFileList(result.items);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`加载失败：${error.message}`, 'error');
+    }
+  }
+
+  renderAlistFileList(items) {
+    const container = document.getElementById('alistFileList');
+    items.sort((a, b) => {
+      if (a.type === 'directory' && b.type !== 'directory') return -1;
+      if (a.type !== 'directory' && b.type === 'directory') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    container.innerHTML = items.map(item => `
+      <div class="file-item" data-type="${item.type}" data-path="${item.path}" data-audio="${item.isAudio}">
+        <div class="file-icon ${item.type === 'directory' ? 'folder' : item.isAudio ? 'audio' : ''}">
+          ${item.type === 'directory' ? `
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+            </svg>
+          ` : `
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
+          `}
+        </div>
+        <span class="file-name">${item.name}</span>
+        <span class="file-size">${item.type === 'directory' ? '' : this.formatFileSize(item.size)}</span>
+      </div>
+    `).join('') || '<div class="empty-folder" style="padding: 2rem; text-align: center;">文件夹为空</div>';
+
+    container.querySelectorAll('.file-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.dataset.type === 'directory') {
+          this.alistPathHistory.push(el.dataset.path);
+          this.loadAlistFolder(el.dataset.path);
+        } else if (el.dataset.audio === 'true') {
+          this.addAlistTrack(el.dataset.path, el.querySelector('.file-name').textContent);
+        }
+      });
+    });
+  }
+
+  navigateAlistBack() {
+    if (this.alistPathHistory.length > 1) {
+      this.alistPathHistory.pop();
+      this.loadAlistFolder(this.alistPathHistory[this.alistPathHistory.length - 1]);
+    }
+  }
+
+  addAlistTrack(filePath, name) {
+    const track = {
+      id: `alist-${filePath}`,
+      name,
+      path: `/api/alist/stream?clientId=${encodeURIComponent(this.alistClientId)}&path=${encodeURIComponent(filePath)}`,
+      type: 'alist'
+    };
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加：${name}`, 'success');
+    }
+  }
+
+  async disconnectAlist() {
+    if (this.alistClientId) {
+      await fetch('/api/alist/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.alistClientId }) });
+    }
+    this.alistClientId = null;
+    this.alistPathHistory = ['/'];
+    document.getElementById('alistConfig').style.display = 'block';
+    document.getElementById('alistBrowser').style.display = 'none';
+    this.showNotification('已断开 Alist 连接', 'info');
   }
 }
 

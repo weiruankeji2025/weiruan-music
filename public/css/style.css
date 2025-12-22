@@ -1,31 +1,31 @@
 /* ===== CSS Variables & Themes ===== */
 :root {
-  /* Cyber Neon Theme (Default) */
-  --primary: #00f5ff;
-  --primary-glow: rgba(0, 245, 255, 0.5);
-  --secondary: #8b5cf6;
-  --secondary-glow: rgba(139, 92, 246, 0.5);
-  --accent: #f472b6;
-  --accent-glow: rgba(244, 114, 182, 0.5);
+  /* Dark Theme (Default) */
+  --primary: #3b82f6;
+  --primary-glow: rgba(59, 130, 246, 0.4);
+  --secondary: #6366f1;
+  --secondary-glow: rgba(99, 102, 241, 0.4);
+  --accent: #8b5cf6;
+  --accent-glow: rgba(139, 92, 246, 0.4);
 
-  --bg-dark: #0a0a0f;
-  --bg-darker: #050508;
-  --bg-card: rgba(15, 15, 25, 0.8);
-  --bg-card-hover: rgba(25, 25, 40, 0.9);
-  --bg-glass: rgba(255, 255, 255, 0.03);
+  --bg-dark: #121212;
+  --bg-darker: #0a0a0a;
+  --bg-card: rgba(30, 30, 30, 0.95);
+  --bg-card-hover: rgba(45, 45, 45, 0.95);
+  --bg-glass: rgba(255, 255, 255, 0.05);
 
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-muted: rgba(255, 255, 255, 0.45);
 
-  --border-color: rgba(255, 255, 255, 0.1);
-  --border-glow: rgba(0, 245, 255, 0.3);
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-glow: rgba(59, 130, 246, 0.3);
 
   --gradient-primary: linear-gradient(135deg, var(--primary), var(--secondary));
   --gradient-accent: linear-gradient(135deg, var(--secondary), var(--accent));
 
-  --shadow-glow: 0 0 30px var(--primary-glow);
-  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 25px var(--primary-glow);
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.5);
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -37,40 +37,76 @@
   --transition-slow: 0.5s ease;
 }
 
-/* Theme: Midnight Blue */
-[data-theme="midnight"] {
+/* Theme: Dark (same as root) */
+[data-theme="dark"] {
   --primary: #3b82f6;
-  --primary-glow: rgba(59, 130, 246, 0.5);
+  --primary-glow: rgba(59, 130, 246, 0.4);
   --secondary: #6366f1;
-  --secondary-glow: rgba(99, 102, 241, 0.5);
-  --accent: #a78bfa;
-  --accent-glow: rgba(167, 139, 250, 0.5);
-  --bg-dark: #0f172a;
-  --bg-darker: #020617;
+  --secondary-glow: rgba(99, 102, 241, 0.4);
+  --accent: #8b5cf6;
+  --accent-glow: rgba(139, 92, 246, 0.4);
+  --bg-dark: #121212;
+  --bg-darker: #0a0a0a;
+  --bg-card: rgba(30, 30, 30, 0.95);
+  --bg-card-hover: rgba(45, 45, 45, 0.95);
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.45);
+  --border-color: rgba(255, 255, 255, 0.12);
 }
 
-/* Theme: Sunset Glow */
-[data-theme="sunset"] {
-  --primary: #f97316;
-  --primary-glow: rgba(249, 115, 22, 0.5);
-  --secondary: #ec4899;
-  --secondary-glow: rgba(236, 72, 153, 0.5);
-  --accent: #fbbf24;
-  --accent-glow: rgba(251, 191, 36, 0.5);
-  --bg-dark: #1a0a0a;
-  --bg-darker: #0a0505;
+/* Theme: Light */
+[data-theme="light"] {
+  --primary: #2563eb;
+  --primary-glow: rgba(37, 99, 235, 0.3);
+  --secondary: #4f46e5;
+  --secondary-glow: rgba(79, 70, 229, 0.3);
+  --accent: #7c3aed;
+  --accent-glow: rgba(124, 58, 237, 0.3);
+  --bg-dark: #f5f5f5;
+  --bg-darker: #ffffff;
+  --bg-card: rgba(255, 255, 255, 0.95);
+  --bg-card-hover: rgba(245, 245, 245, 0.98);
+  --bg-glass: rgba(0, 0, 0, 0.03);
+  --text-primary: #1a1a1a;
+  --text-secondary: rgba(0, 0, 0, 0.65);
+  --text-muted: rgba(0, 0, 0, 0.45);
+  --border-color: rgba(0, 0, 0, 0.1);
+  --border-glow: rgba(37, 99, 235, 0.2);
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
-/* Theme: Matrix Green */
-[data-theme="matrix"] {
-  --primary: #22c55e;
-  --primary-glow: rgba(34, 197, 94, 0.5);
-  --secondary: #10b981;
-  --secondary-glow: rgba(16, 185, 129, 0.5);
-  --accent: #84cc16;
-  --accent-glow: rgba(132, 204, 22, 0.5);
-  --bg-dark: #0a0f0a;
-  --bg-darker: #050805;
+/* Light theme specific overrides */
+[data-theme="light"] .grid-overlay {
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.05) 1px, transparent 1px);
+}
+
+[data-theme="light"] .glow-orb {
+  opacity: 0.15;
+}
+
+[data-theme="light"] .btn-control.play-btn,
+[data-theme="light"] .btn-mini.play {
+  color: #ffffff;
+}
+
+[data-theme="light"] .btn-primary {
+  color: #ffffff;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #e5e5e5;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .notification {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 /* ===== Reset & Base ===== */
