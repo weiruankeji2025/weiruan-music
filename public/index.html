@@ -228,16 +228,40 @@
           <!-- Cloud Type Selector -->
           <div class="cloud-type-selector">
             <button class="cloud-type-btn active" data-type="webdav">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
               </svg>
               <span>WebDAV</span>
             </button>
             <button class="cloud-type-btn" data-type="gdrive">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2L2 19.5h7.5L12 14l2.5 5.5H22L12 2zm0 5l5.5 9.5h-11L12 7z"/>
               </svg>
-              <span>Google 云盘</span>
+              <span>Google</span>
+            </button>
+            <button class="cloud-type-btn" data-type="onedrive">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M10.5 18H4a4 4 0 01-.93-7.89A6.002 6.002 0 0114.5 8.5a4.5 4.5 0 014.5 4.5c0 .5-.08 1-.23 1.45A3.5 3.5 0 0118 21h-7.5v-3z"/>
+              </svg>
+              <span>OneDrive</span>
+            </button>
+            <button class="cloud-type-btn" data-type="dropbox">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2l-7 4.5 5 3.5-5 3.5 7 4.5 7-4.5-5-3.5 5-3.5-7-4.5zm-5 14l5 3 5-3-5-3-5 3z"/>
+              </svg>
+              <span>Dropbox</span>
+            </button>
+            <button class="cloud-type-btn" data-type="aliyun">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+              </svg>
+              <span>阿里云盘</span>
+            </button>
+            <button class="cloud-type-btn" data-type="baidu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5.927 12.497c2.063-.443 1.782-2.909 1.72-3.448-.101-.83-1.078-2.282-2.405-2.167-1.67.15-1.913 2.561-1.913 2.561-.226 1.115.54 3.497 2.598 3.054zm2.19 4.288c-.06.173-.195.616-.078 1.002.23.744.204 1.463.166 1.71-.064.386-.133.468-.164.468-.055 0-.292-.035-.441-.348-.183-.378-.207-.904-.09-1.443.069-.318.198-.758.437-1.147.247-.404.544-.77.876-1.07.116-.105.222-.201.321-.286.29-.25.504-.404.566-.477.086-.104.106-.222-.063-.398-.276-.284-.502-.459-.627-.625-.126-.166-.237-.36-.325-.635-.156-.487-.094-.876.094-1.22.37-.679 1.188-.98 1.808-.99.62-.008 1.313.233 1.786.657.476.427.68 1.03.505 1.6-.132.432-.478.897-.92 1.258-.248.2-.5.363-.727.477-.378.19-.652.283-.838.319-.154.03-.374.072-.616.072s-.485-.053-.638-.19c-.064-.058-.154-.2-.126-.383.022-.147.11-.257.2-.339.084-.078.185-.136.288-.179.217-.09.455-.119.665-.091.203.027.464.13.716.286.155.097.301.205.433.318.15.13.275.257.368.367.032.038.063.077.093.117.026.033.05.067.071.1.055.09.09.174.1.238.013.096-.028.166-.08.208-.072.058-.148.074-.244.08-.15.01-.332-.025-.493-.113-.125-.067-.241-.172-.326-.322-.054-.095-.087-.18-.106-.255-.03-.12-.03-.206-.025-.264-.054.07-.128.188-.185.344z"/>
+              </svg>
+              <span>百度网盘</span>
             </button>
           </div>
 
@@ -245,46 +269,38 @@
           <div class="cloud-section" id="webdav-section">
             <div class="cloud-connect">
               <h2>WebDAV 存储</h2>
-              <p class="cloud-description">连接到 Nextcloud、ownCloud 或任何支持 WebDAV 的存储</p>
-
+              <p class="cloud-description">连接到 Nextcloud、ownCloud、坚果云或任何支持 WebDAV 的存储</p>
               <form class="connect-form" id="webdavForm">
-              <div class="form-group">
-                <label for="webdavUrl">WebDAV 地址</label>
-                <input type="url" id="webdavUrl" placeholder="https://cloud.example.com/remote.php/dav/files/username/" required>
-              </div>
-              <div class="form-row">
                 <div class="form-group">
-                  <label for="webdavUser">用户名</label>
-                  <input type="text" id="webdavUser" placeholder="用户名" required>
+                  <label for="webdavUrl">WebDAV 地址</label>
+                  <input type="url" id="webdavUrl" placeholder="https://dav.jianguoyun.com/dav/" required>
                 </div>
-                <div class="form-group">
-                  <label for="webdavPass">密码</label>
-                  <input type="password" id="webdavPass" placeholder="密码" required>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="webdavUser">用户名</label>
+                    <input type="text" id="webdavUser" placeholder="用户名" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="webdavPass">密码/应用密码</label>
+                    <input type="password" id="webdavPass" placeholder="密码" required>
+                  </div>
                 </div>
-              </div>
-              <button type="submit" class="btn-primary full-width">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
-                <span>连接</span>
-              </button>
-            </form>
-          </div>
-
-          <div class="cloud-browser" id="cloudBrowser" style="display:none">
-            <div class="browser-header">
-              <button class="btn-icon" id="backBtn" title="返回">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M19 12H5M12 19l-7-7 7-7"/>
-                </svg>
-              </button>
-              <div class="current-path" id="currentPath">/</div>
-              <button class="btn-secondary" id="disconnectBtn">断开连接</button>
+                <button type="submit" class="btn-primary full-width">
+                  <span>连接</span>
+                </button>
+              </form>
             </div>
-            <div class="file-list" id="fileList"></div>
-          </div>
+            <div class="cloud-browser" id="webdavBrowser" style="display:none">
+              <div class="browser-header">
+                <button class="btn-icon" id="webdavBackBtn" title="返回">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                </button>
+                <div class="current-path" id="webdavPath">/</div>
+                <button class="btn-secondary" id="webdavDisconnect">断开连接</button>
+              </div>
+              <div class="file-list" id="webdavFileList"></div>
             </div>
           </div>
 
@@ -293,85 +309,229 @@
             <div class="cloud-connect">
               <h2>Google 云盘</h2>
               <p class="cloud-description">连接您的 Google 云盘账户</p>
-
-              <!-- Step 1: Configure OAuth -->
               <div class="gdrive-config" id="gdriveConfig">
                 <div class="config-notice">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="16" x2="12" y2="12"/>
-                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
                   </svg>
-                  <span>首先，配置您的 Google OAuth 凭证</span>
+                  <span>首先配置 Google OAuth 凭证</span>
                 </div>
                 <form class="connect-form" id="gdriveConfigForm">
                   <div class="form-group">
-                    <label for="gdriveClientId">客户端 ID</label>
-                    <input type="text" id="gdriveClientId" placeholder="your-client-id.apps.googleusercontent.com" required>
+                    <label>客户端 ID</label>
+                    <input type="text" id="gdriveClientId" placeholder="xxx.apps.googleusercontent.com" required>
                   </div>
                   <div class="form-group">
-                    <label for="gdriveClientSecret">客户端密钥</label>
-                    <input type="password" id="gdriveClientSecret" placeholder="您的客户端密钥" required>
+                    <label>客户端密钥</label>
+                    <input type="password" id="gdriveClientSecret" placeholder="客户端密钥" required>
                   </div>
-                  <button type="submit" class="btn-primary full-width">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                    <span>保存配置</span>
-                  </button>
+                  <button type="submit" class="btn-primary full-width">保存配置</button>
                 </form>
                 <div class="config-help">
                   <details>
-                    <summary>如何获取 Google OAuth 凭证？</summary>
+                    <summary>如何获取凭证？</summary>
                     <ol>
                       <li>访问 <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
-                      <li>创建新项目或选择现有项目</li>
-                      <li>启用 "Google Drive API"</li>
-                      <li>前往 "凭据" → "创建凭据" → "OAuth 客户端 ID"</li>
-                      <li>选择 "Web 应用程序"</li>
-                      <li>添加重定向 URI：<code id="redirectUri"></code></li>
-                      <li>复制客户端 ID 和客户端密钥</li>
+                      <li>创建项目并启用 Google Drive API</li>
+                      <li>创建 OAuth 客户端 ID</li>
+                      <li>添加重定向 URI: <code id="gdriveRedirectUri"></code></li>
                     </ol>
                   </details>
                 </div>
               </div>
-
-              <!-- Step 2: Connect -->
               <div class="gdrive-connect" id="gdriveConnect" style="display:none">
-                <button class="btn-google" id="googleSignInBtn">
-                  <svg width="20" height="20" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                  </svg>
+                <button class="btn-google" id="gdriveSignInBtn">
+                  <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
                   <span>使用 Google 登录</span>
                 </button>
-                <button class="btn-secondary full-width" id="gdriveReconfigure" style="margin-top: 1rem">
-                  更改配置
-                </button>
+                <button class="btn-secondary full-width" id="gdriveReconfigure" style="margin-top:1rem">更改配置</button>
               </div>
             </div>
-
-            <!-- Google Drive Browser -->
             <div class="cloud-browser" id="gdriveBrowser" style="display:none">
               <div class="browser-header">
                 <button class="btn-icon" id="gdriveBackBtn" title="返回">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
                 </button>
-                <div class="gdrive-user" id="gdriveUser">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L2 19.5h7.5L12 14l2.5 5.5H22L12 2z"/>
-                  </svg>
-                  <span id="gdriveEmail">-</span>
-                </div>
+                <div class="gdrive-user" id="gdriveUser"><span id="gdriveEmail">-</span></div>
                 <button class="btn-secondary" id="gdriveDisconnect">断开连接</button>
               </div>
               <div class="file-list" id="gdriveFileList"></div>
             </div>
           </div>
+
+          <!-- OneDrive Section -->
+          <div class="cloud-section" id="onedrive-section" style="display:none">
+            <div class="cloud-connect">
+              <h2>OneDrive</h2>
+              <p class="cloud-description">连接您的 Microsoft OneDrive 账户</p>
+              <div id="onedriveConfig">
+                <form class="connect-form" id="onedriveConfigForm">
+                  <div class="form-group">
+                    <label>应用程序 ID (客户端 ID)</label>
+                    <input type="text" id="onedriveClientId" placeholder="Azure AD 应用 ID" required>
+                  </div>
+                  <div class="form-group">
+                    <label>客户端密钥</label>
+                    <input type="password" id="onedriveClientSecret" placeholder="客户端密钥" required>
+                  </div>
+                  <button type="submit" class="btn-primary full-width">保存配置</button>
+                </form>
+                <div class="config-help">
+                  <details>
+                    <summary>如何获取凭证？</summary>
+                    <ol>
+                      <li>访问 <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank">Azure 应用注册</a></li>
+                      <li>创建新应用并获取应用程序 ID</li>
+                      <li>添加重定向 URI: <code id="onedriveRedirectUri"></code></li>
+                    </ol>
+                  </details>
+                </div>
+              </div>
+              <div id="onedriveConnect" style="display:none">
+                <button class="btn-primary full-width" id="onedriveSignInBtn">登录 OneDrive</button>
+                <button class="btn-secondary full-width" id="onedriveReconfigure" style="margin-top:1rem">更改配置</button>
+              </div>
+            </div>
+            <div class="cloud-browser" id="onedriveBrowser" style="display:none">
+              <div class="browser-header">
+                <button class="btn-icon" id="onedriveBackBtn" title="返回">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <div id="onedriveUser"><span id="onedriveEmail">-</span></div>
+                <button class="btn-secondary" id="onedriveDisconnect">断开连接</button>
+              </div>
+              <div class="file-list" id="onedriveFileList"></div>
+            </div>
+          </div>
+
+          <!-- Dropbox Section -->
+          <div class="cloud-section" id="dropbox-section" style="display:none">
+            <div class="cloud-connect">
+              <h2>Dropbox</h2>
+              <p class="cloud-description">连接您的 Dropbox 账户</p>
+              <div id="dropboxConfig">
+                <form class="connect-form" id="dropboxConfigForm">
+                  <div class="form-group">
+                    <label>App Key</label>
+                    <input type="text" id="dropboxClientId" placeholder="Dropbox App Key" required>
+                  </div>
+                  <div class="form-group">
+                    <label>App Secret</label>
+                    <input type="password" id="dropboxClientSecret" placeholder="Dropbox App Secret" required>
+                  </div>
+                  <button type="submit" class="btn-primary full-width">保存配置</button>
+                </form>
+                <div class="config-help">
+                  <details>
+                    <summary>如何获取凭证？</summary>
+                    <ol>
+                      <li>访问 <a href="https://www.dropbox.com/developers/apps" target="_blank">Dropbox App Console</a></li>
+                      <li>创建应用并获取 App Key/Secret</li>
+                      <li>添加重定向 URI: <code id="dropboxRedirectUri"></code></li>
+                    </ol>
+                  </details>
+                </div>
+              </div>
+              <div id="dropboxConnect" style="display:none">
+                <button class="btn-primary full-width" id="dropboxSignInBtn">登录 Dropbox</button>
+                <button class="btn-secondary full-width" id="dropboxReconfigure" style="margin-top:1rem">更改配置</button>
+              </div>
+            </div>
+            <div class="cloud-browser" id="dropboxBrowser" style="display:none">
+              <div class="browser-header">
+                <button class="btn-icon" id="dropboxBackBtn" title="返回">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <div id="dropboxUser"><span id="dropboxEmail">-</span></div>
+                <button class="btn-secondary" id="dropboxDisconnect">断开连接</button>
+              </div>
+              <div class="file-list" id="dropboxFileList"></div>
+            </div>
+          </div>
+
+          <!-- Aliyun Drive Section -->
+          <div class="cloud-section" id="aliyun-section" style="display:none">
+            <div class="cloud-connect">
+              <h2>阿里云盘</h2>
+              <p class="cloud-description">使用刷新令牌连接阿里云盘</p>
+              <div id="aliyunConfig">
+                <form class="connect-form" id="aliyunConfigForm">
+                  <div class="form-group">
+                    <label>Refresh Token</label>
+                    <input type="text" id="aliyunRefreshToken" placeholder="阿里云盘刷新令牌" required>
+                  </div>
+                  <button type="submit" class="btn-primary full-width">连接</button>
+                </form>
+                <div class="config-help">
+                  <details>
+                    <summary>如何获取刷新令牌？</summary>
+                    <ol>
+                      <li>登录阿里云盘网页版</li>
+                      <li>打开浏览器开发者工具 (F12)</li>
+                      <li>在 Application → Local Storage 中找到 token</li>
+                      <li>复制 refresh_token 的值</li>
+                    </ol>
+                  </details>
+                </div>
+              </div>
+            </div>
+            <div class="cloud-browser" id="aliyunBrowser" style="display:none">
+              <div class="browser-header">
+                <button class="btn-icon" id="aliyunBackBtn" title="返回">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <div id="aliyunUser"><span id="aliyunUserName">-</span></div>
+                <button class="btn-secondary" id="aliyunDisconnect">断开连接</button>
+              </div>
+              <div class="file-list" id="aliyunFileList"></div>
+            </div>
+          </div>
+
+          <!-- Baidu Pan Section -->
+          <div class="cloud-section" id="baidu-section" style="display:none">
+            <div class="cloud-connect">
+              <h2>百度网盘</h2>
+              <p class="cloud-description">连接您的百度网盘账户</p>
+              <div id="baiduConfig">
+                <form class="connect-form" id="baiduConfigForm">
+                  <div class="form-group">
+                    <label>App Key</label>
+                    <input type="text" id="baiduAppKey" placeholder="百度开放平台 App Key" required>
+                  </div>
+                  <div class="form-group">
+                    <label>Secret Key</label>
+                    <input type="password" id="baiduSecretKey" placeholder="百度开放平台 Secret Key" required>
+                  </div>
+                  <button type="submit" class="btn-primary full-width">保存配置</button>
+                </form>
+                <div class="config-help">
+                  <details>
+                    <summary>如何获取凭证？</summary>
+                    <ol>
+                      <li>访问 <a href="https://pan.baidu.com/union/main/application/personal" target="_blank">百度网盘开放平台</a></li>
+                      <li>创建应用并获取 App Key/Secret Key</li>
+                      <li>添加重定向 URI: <code id="baiduRedirectUri"></code></li>
+                    </ol>
+                  </details>
+                </div>
+              </div>
+              <div id="baiduConnect" style="display:none">
+                <button class="btn-primary full-width" id="baiduSignInBtn">登录百度网盘</button>
+                <button class="btn-secondary full-width" id="baiduReconfigure" style="margin-top:1rem">更改配置</button>
+              </div>
+            </div>
+            <div class="cloud-browser" id="baiduBrowser" style="display:none">
+              <div class="browser-header">
+                <button class="btn-icon" id="baiduBackBtn" title="返回">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <div id="baiduUser"><span id="baiduUserName">-</span></div>
+                <button class="btn-secondary" id="baiduDisconnect">断开连接</button>
+              </div>
+              <div class="file-list" id="baiduFileList"></div>
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -380,7 +540,6 @@
         <div class="equalizer-wrapper">
           <h2>音频均衡器</h2>
           <p class="eq-description">自定义您的音频体验</p>
-
           <div class="eq-presets">
             <button class="preset-btn active" data-preset="flat">平坦</button>
             <button class="preset-btn" data-preset="rock">摇滚</button>
@@ -391,85 +550,31 @@
             <button class="preset-btn" data-preset="bass">低音增强</button>
             <button class="preset-btn" data-preset="vocal">人声</button>
           </div>
-
           <div class="eq-sliders">
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-32" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">32Hz</span>
-              <span class="eq-value" data-for="eq-32">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-64" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">64Hz</span>
-              <span class="eq-value" data-for="eq-64">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-125" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">125Hz</span>
-              <span class="eq-value" data-for="eq-125">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-250" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">250Hz</span>
-              <span class="eq-value" data-for="eq-250">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-500" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">500Hz</span>
-              <span class="eq-value" data-for="eq-500">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-1k" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">1kHz</span>
-              <span class="eq-value" data-for="eq-1k">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-2k" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">2kHz</span>
-              <span class="eq-value" data-for="eq-2k">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-4k" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">4kHz</span>
-              <span class="eq-value" data-for="eq-4k">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-8k" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">8kHz</span>
-              <span class="eq-value" data-for="eq-8k">0dB</span>
-            </div>
-            <div class="eq-band">
-              <input type="range" class="eq-slider" id="eq-16k" min="-12" max="12" value="0" orient="vertical">
-              <span class="eq-label">16kHz</span>
-              <span class="eq-value" data-for="eq-16k">0dB</span>
-            </div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-32" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">32Hz</span><span class="eq-value" data-for="eq-32">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-64" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">64Hz</span><span class="eq-value" data-for="eq-64">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-125" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">125Hz</span><span class="eq-value" data-for="eq-125">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-250" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">250Hz</span><span class="eq-value" data-for="eq-250">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-500" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">500Hz</span><span class="eq-value" data-for="eq-500">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-1k" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">1kHz</span><span class="eq-value" data-for="eq-1k">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-2k" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">2kHz</span><span class="eq-value" data-for="eq-2k">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-4k" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">4kHz</span><span class="eq-value" data-for="eq-4k">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-8k" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">8kHz</span><span class="eq-value" data-for="eq-8k">0dB</span></div>
+            <div class="eq-band"><input type="range" class="eq-slider" id="eq-16k" min="-12" max="12" value="0" orient="vertical"><span class="eq-label">16kHz</span><span class="eq-value" data-for="eq-16k">0dB</span></div>
           </div>
-
           <div class="audio-effects">
             <h3>音频效果</h3>
             <div class="effect-controls">
-              <div class="effect-item">
-                <span class="effect-label">立体声增强</span>
-                <input type="range" class="effect-slider" id="stereoWidth" min="0" max="100" value="50">
-                <span class="effect-value" id="stereoWidthValue">50%</span>
-              </div>
-              <div class="effect-item">
-                <span class="effect-label">低音增强</span>
-                <input type="range" class="effect-slider" id="bassBoost" min="0" max="100" value="0">
-                <span class="effect-value" id="bassBoostValue">0%</span>
-              </div>
-              <div class="effect-item">
-                <span class="effect-label">混响</span>
-                <input type="range" class="effect-slider" id="reverb" min="0" max="100" value="0">
-                <span class="effect-value" id="reverbValue">0%</span>
-              </div>
+              <div class="effect-item"><span class="effect-label">立体声增强</span><input type="range" class="effect-slider" id="stereoWidth" min="0" max="100" value="50"><span class="effect-value" id="stereoWidthValue">50%</span></div>
+              <div class="effect-item"><span class="effect-label">低音增强</span><input type="range" class="effect-slider" id="bassBoost" min="0" max="100" value="0"><span class="effect-value" id="bassBoostValue">0%</span></div>
+              <div class="effect-item"><span class="effect-label">混响</span><input type="range" class="effect-slider" id="reverb" min="0" max="100" value="0"><span class="effect-value" id="reverbValue">0%</span></div>
             </div>
           </div>
         </div>
       </section>
     </main>
 
-    <!-- Mini Player (always visible at bottom) -->
+    <!-- Mini Player -->
     <footer class="mini-player" id="miniPlayer">
       <div class="mini-track">
         <div class="mini-art" id="miniArt"></div>
@@ -479,16 +584,9 @@
         </div>
       </div>
       <div class="mini-controls">
-        <button class="btn-mini" id="miniPrev">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-        </button>
-        <button class="btn-mini play" id="miniPlay">
-          <svg viewBox="0 0 24 24" fill="currentColor" class="play-icon"><path d="M8 5v14l11-7z"/></svg>
-          <svg viewBox="0 0 24 24" fill="currentColor" class="pause-icon" style="display:none"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
-        </button>
-        <button class="btn-mini" id="miniNext">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-        </button>
+        <button class="btn-mini" id="miniPrev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+        <button class="btn-mini play" id="miniPlay"><svg viewBox="0 0 24 24" fill="currentColor" class="play-icon"><path d="M8 5v14l11-7z"/></svg><svg viewBox="0 0 24 24" fill="currentColor" class="pause-icon" style="display:none"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></button>
+        <button class="btn-mini" id="miniNext"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
       </div>
       <div class="mini-progress">
         <div class="mini-progress-bar" id="miniProgressBar">
@@ -506,45 +604,11 @@
         <button class="btn-icon close-modal">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="setting-item">
-          <span>主题</span>
-          <select id="themeSelect">
-            <option value="cyber">赛博霓虹</option>
-            <option value="midnight">午夜蓝</option>
-            <option value="sunset">日落橙</option>
-            <option value="matrix">矩阵绿</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <span>可视化样式</span>
-          <select id="visualizerSelect">
-            <option value="bars">频率条</option>
-            <option value="wave">波形</option>
-            <option value="circular">环形</option>
-            <option value="particles">粒子</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <span>自动播放下一曲</span>
-          <label class="toggle">
-            <input type="checkbox" id="autoplayToggle" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="setting-item">
-          <span>显示通知</span>
-          <label class="toggle">
-            <input type="checkbox" id="notifyToggle" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="setting-item">
-          <span>键盘快捷键</span>
-          <label class="toggle">
-            <input type="checkbox" id="shortcutsToggle" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
+        <div class="setting-item"><span>主题</span><select id="themeSelect"><option value="cyber">赛博霓虹</option><option value="midnight">午夜蓝</option><option value="sunset">日落橙</option><option value="matrix">矩阵绿</option></select></div>
+        <div class="setting-item"><span>可视化样式</span><select id="visualizerSelect"><option value="bars">频率条</option><option value="wave">波形</option><option value="circular">环形</option><option value="particles">粒子</option></select></div>
+        <div class="setting-item"><span>自动播放下一曲</span><label class="toggle"><input type="checkbox" id="autoplayToggle" checked><span class="toggle-slider"></span></label></div>
+        <div class="setting-item"><span>显示通知</span><label class="toggle"><input type="checkbox" id="notifyToggle" checked><span class="toggle-slider"></span></label></div>
+        <div class="setting-item"><span>键盘快捷键</span><label class="toggle"><input type="checkbox" id="shortcutsToggle" checked><span class="toggle-slider"></span></label></div>
       </div>
       <div class="shortcuts-info">
         <h4>键盘快捷键</h4>
@@ -554,15 +618,11 @@
         <div class="shortcut"><kbd>↑</kbd> 增大音量</div>
         <div class="shortcut"><kbd>↓</kbd> 减小音量</div>
         <div class="shortcut"><kbd>M</kbd> 静音/取消静音</div>
-        <div class="shortcut"><kbd>S</kbd> 随机播放</div>
-        <div class="shortcut"><kbd>R</kbd> 重复模式</div>
       </div>
     </div>
   </div>
 
-  <!-- Notification Container -->
   <div class="notifications" id="notifications"></div>
-
   <script src="js/app.js"></script>
 </body>
 </html>

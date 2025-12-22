@@ -16,16 +16,24 @@ async function loadWebDAV() {
 }
 loadWebDAV();
 
-// Google Drive OAuth2 Configuration
-// Users need to set these environment variables or use the config endpoint
-let GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-let GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-let GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || '';
+// OAuth Configuration Storage
+const oauthConfig = {
+  google: { clientId: '', clientSecret: '', redirectUri: '' },
+  onedrive: { clientId: '', clientSecret: '', redirectUri: '' },
+  dropbox: { clientId: '', clientSecret: '', redirectUri: '' },
+  aliyun: { refreshToken: '' },
+  baidu: { appKey: '', secretKey: '', accessToken: '', refreshToken: '' }
+};
 
-// Store Google Drive clients
+// Store cloud clients
+const webdavClients = new Map();
 const googleDriveClients = new Map();
+const onedriveClients = new Map();
+const dropboxClients = new Map();
+const aliyunClients = new Map();
+const baiduClients = new Map();
 
-// CORS configuration - Allow all origins for development
+// CORS configuration
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -63,8 +71,18 @@ const upload = multer({
   }
 });
 
-// Store WebDAV clients
-const webdavClients = new Map();
+// Audio MIME types
+const audioMimeTypes = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.wma': 'audio/x-ms-wma'
+};
+
+const audioExtensions = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma'];
 
 // Upload local music files
 app.post('/api/upload', upload.array('files', 50), async (req, res) => {
@@ -93,6 +111,8 @@ app.get('/api/music/:filename', (req, res) => {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
+  const ext = path.extname(req.params.filename).toLowerCase();
+  const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
@@ -105,13 +125,14 @@ app.get('/api/music/:filename', (req, res) => {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': contentType,
     });
     file.pipe(res);
   } else {
     res.writeHead(200, {
       'Content-Length': fileSize,
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes'
     });
     fs.createReadStream(filePath).pipe(res);
   }
@@ -155,57 +176,43 @@ app.delete('/api/files/:filename', (req, res) => {
   }
 });
 
-// WebDAV connection
+// ==================== WebDAV API ====================
+
 app.post('/api/webdav/connect', async (req, res) => {
   try {
     if (!createClient) {
-      return res.status(500).json({ success: false, error: 'WebDAV module not loaded yet, please try again' });
+      return res.status(500).json({ success: false, error: 'WebDAV 模块尚未加载，请稍后重试' });
     }
 
     const { url, username, password } = req.body;
-    const clientId = `${url}-${username}`;
+    const clientId = `webdav-${Date.now()}`;
 
-    const client = createClient(url, {
-      username,
-      password
-    });
-
-    // Test connection
+    const client = createClient(url, { username, password });
     await client.getDirectoryContents('/');
 
     webdavClients.set(clientId, { client, url, username });
-
-    res.json({
-      success: true,
-      clientId,
-      message: 'WebDAV connected successfully'
-    });
+    res.json({ success: true, clientId });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// List WebDAV directory
 app.get('/api/webdav/list', async (req, res) => {
   try {
     const { clientId, path: dirPath = '/' } = req.query;
     const clientInfo = webdavClients.get(clientId);
 
     if (!clientInfo) {
-      return res.status(400).json({ success: false, error: 'WebDAV client not connected' });
+      return res.status(400).json({ success: false, error: 'WebDAV 未连接' });
     }
 
     const contents = await clientInfo.client.getDirectoryContents(dirPath);
-    const audioExtensions = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma'];
-
     const items = contents.map(item => ({
       name: item.basename,
       path: item.filename,
       type: item.type,
       size: item.size,
-      isAudio: item.type === 'file' && audioExtensions.some(ext =>
-        item.basename.toLowerCase().endsWith(ext)
-      )
+      isAudio: item.type === 'file' && audioExtensions.some(ext => item.basename.toLowerCase().endsWith(ext))
     }));
 
     res.json({ success: true, items });
@@ -214,41 +221,27 @@ app.get('/api/webdav/list', async (req, res) => {
   }
 });
 
-// Stream WebDAV file (proxy with range support)
 app.get('/api/webdav/stream', async (req, res) => {
   try {
     const { clientId, path: filePath } = req.query;
     const clientInfo = webdavClients.get(clientId);
 
     if (!clientInfo) {
-      return res.status(400).json({ success: false, error: 'WebDAV client not connected' });
+      return res.status(400).json({ success: false, error: 'WebDAV 未连接' });
     }
 
     const stat = await clientInfo.client.stat(filePath);
     const fileSize = stat.size;
     const range = req.headers.range;
-
     const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes = {
-      '.mp3': 'audio/mpeg',
-      '.wav': 'audio/wav',
-      '.flac': 'audio/flac',
-      '.ogg': 'audio/ogg',
-      '.m4a': 'audio/mp4',
-      '.aac': 'audio/aac',
-      '.wma': 'audio/x-ms-wma'
-    };
-    const contentType = mimeTypes[ext] || 'audio/mpeg';
+    const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
-      const stream = clientInfo.client.createReadStream(filePath, {
-        range: { start, end }
-      });
-
+      const stream = clientInfo.client.createReadStream(filePath, { range: { start, end } });
       res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
@@ -270,260 +263,124 @@ app.get('/api/webdav/stream', async (req, res) => {
   }
 });
 
-// Disconnect WebDAV
 app.post('/api/webdav/disconnect', (req, res) => {
   const { clientId } = req.body;
   webdavClients.delete(clientId);
   res.json({ success: true });
 });
 
-// Get all connected WebDAV clients
-app.get('/api/webdav/clients', (req, res) => {
-  const clients = Array.from(webdavClients.entries()).map(([id, info]) => ({
-    id,
-    url: info.url,
-    username: info.username
-  }));
-  res.json({ success: true, clients });
-});
-
 // ==================== Google Drive API ====================
 
-// Configure Google OAuth credentials
 app.post('/api/gdrive/config', (req, res) => {
   const { clientId, clientSecret, redirectUri } = req.body;
-  GOOGLE_CLIENT_ID = clientId;
-  GOOGLE_CLIENT_SECRET = clientSecret;
-  GOOGLE_REDIRECT_URI = redirectUri || `http://localhost:${PORT}/api/gdrive/callback`;
-  res.json({ success: true, message: 'Google Drive configured' });
+  oauthConfig.google = { clientId, clientSecret, redirectUri };
+  res.json({ success: true });
 });
 
-// Get Google OAuth URL
+app.get('/api/gdrive/status', (req, res) => {
+  res.json({
+    success: true,
+    configured: !!(oauthConfig.google.clientId && oauthConfig.google.clientSecret)
+  });
+});
+
 app.get('/api/gdrive/auth-url', (req, res) => {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    return res.status(400).json({
-      success: false,
-      error: 'Google Drive not configured. Please set Client ID and Secret first.'
-    });
+  const { clientId, clientSecret } = oauthConfig.google;
+  if (!clientId || !clientSecret) {
+    return res.status(400).json({ success: false, error: 'Google Drive 未配置' });
   }
 
-  const redirectUri = req.query.redirectUri || GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/gdrive/callback`;
-
-  const oauth2Client = new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    redirectUri
-  );
+  const redirectUri = oauthConfig.google.redirectUri || `${req.protocol}://${req.get('host')}/api/gdrive/callback`;
+  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: [
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/drive.metadata.readonly'
-    ],
+    scope: ['https://www.googleapis.com/auth/drive.readonly'],
     prompt: 'consent'
   });
 
-  res.json({ success: true, authUrl, redirectUri });
+  res.json({ success: true, authUrl });
 });
 
-// Google OAuth callback
 app.get('/api/gdrive/callback', async (req, res) => {
   const { code } = req.query;
-
-  if (!code) {
-    return res.status(400).send('Authorization code not provided');
-  }
+  if (!code) return res.status(400).send('授权码未提供');
 
   try {
-    const oauth2Client = new google.auth.OAuth2(
-      GOOGLE_CLIENT_ID,
-      GOOGLE_CLIENT_SECRET,
-      GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/gdrive/callback`
-    );
+    const { clientId, clientSecret, redirectUri } = oauthConfig.google;
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri || `${req.protocol}://${req.get('host')}/api/gdrive/callback`);
 
     const { tokens } = await oauth2Client.getToken(code);
-    const clientId = `gdrive-${Date.now()}`;
-
     oauth2Client.setCredentials(tokens);
-    const drive = google.drive({ version: 'v3', auth: oauth2Client });
-
-    // Get user info
-    const about = await drive.about.get({ fields: 'user' });
-    const userEmail = about.data.user.emailAddress;
-
-    googleDriveClients.set(clientId, {
-      oauth2Client,
-      drive,
-      tokens,
-      email: userEmail
-    });
-
-    // Redirect back to the app with client ID
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Google Drive Connected</title></head>
-      <body>
-        <script>
-          window.opener.postMessage({
-            type: 'gdrive-connected',
-            clientId: '${clientId}',
-            email: '${userEmail}'
-          }, '*');
-          window.close();
-        </script>
-        <p>Google Drive connected successfully! You can close this window.</p>
-      </body>
-      </html>
-    `);
-  } catch (error) {
-    res.status(500).send(`Authentication failed: ${error.message}`);
-  }
-});
-
-// Connect with existing tokens
-app.post('/api/gdrive/connect', async (req, res) => {
-  const { accessToken, refreshToken } = req.body;
-
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    return res.status(400).json({
-      success: false,
-      error: 'Google Drive not configured'
-    });
-  }
-
-  try {
-    const oauth2Client = new google.auth.OAuth2(
-      GOOGLE_CLIENT_ID,
-      GOOGLE_CLIENT_SECRET
-    );
-
-    oauth2Client.setCredentials({
-      access_token: accessToken,
-      refresh_token: refreshToken
-    });
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     const about = await drive.about.get({ fields: 'user' });
     const userEmail = about.data.user.emailAddress;
 
-    const clientId = `gdrive-${Date.now()}`;
-    googleDriveClients.set(clientId, {
-      oauth2Client,
-      drive,
-      email: userEmail
-    });
+    const clientIdKey = `gdrive-${Date.now()}`;
+    googleDriveClients.set(clientIdKey, { oauth2Client, drive, email: userEmail });
 
-    res.json({ success: true, clientId, email: userEmail });
+    res.send(`<!DOCTYPE html><html><head><title>已连接</title></head><body><script>
+      window.opener.postMessage({ type: 'gdrive-connected', clientId: '${clientIdKey}', email: '${userEmail}' }, '*');
+      window.close();
+    </script><p>Google 云盘已连接！可以关闭此窗口。</p></body></html>`);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).send(`认证失败: ${error.message}`);
   }
 });
 
-// List Google Drive files
 app.get('/api/gdrive/list', async (req, res) => {
   try {
     const { clientId, folderId = 'root' } = req.query;
     const clientInfo = googleDriveClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'Google Drive 未连接' });
 
-    if (!clientInfo) {
-      return res.status(400).json({ success: false, error: 'Google Drive not connected' });
-    }
-
-    const audioMimeTypes = [
-      'audio/mpeg',
-      'audio/mp3',
-      'audio/wav',
-      'audio/flac',
-      'audio/ogg',
-      'audio/mp4',
-      'audio/aac',
-      'audio/x-m4a',
-      'application/octet-stream' // Sometimes audio files are stored as this
-    ];
-
-    // Query for folders and audio files
-    const query = folderId === 'root'
-      ? `'root' in parents and trashed = false`
-      : `'${folderId}' in parents and trashed = false`;
-
+    const query = `'${folderId}' in parents and trashed = false`;
     const response = await clientInfo.drive.files.list({
       q: query,
-      fields: 'files(id, name, mimeType, size, modifiedTime)',
+      fields: 'files(id, name, mimeType, size)',
       orderBy: 'folder,name',
       pageSize: 1000
     });
 
-    const audioExtensions = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma'];
-
     const items = response.data.files.map(file => {
       const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
-      const isAudio = audioMimeTypes.includes(file.mimeType) ||
-        audioExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
-
+      const isAudio = audioExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
       return {
         id: file.id,
         name: file.name,
         type: isFolder ? 'directory' : 'file',
         size: file.size ? parseInt(file.size) : 0,
-        mimeType: file.mimeType,
         isAudio: !isFolder && isAudio
       };
     });
 
-    res.json({ success: true, items, folderId });
+    res.json({ success: true, items });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Stream Google Drive file
 app.get('/api/gdrive/stream', async (req, res) => {
   try {
     const { clientId, fileId } = req.query;
     const clientInfo = googleDriveClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'Google Drive 未连接' });
 
-    if (!clientInfo) {
-      return res.status(400).json({ success: false, error: 'Google Drive not connected' });
-    }
-
-    // Get file metadata
-    const fileMeta = await clientInfo.drive.files.get({
-      fileId: fileId,
-      fields: 'name, size, mimeType'
-    });
-
+    const fileMeta = await clientInfo.drive.files.get({ fileId, fields: 'name, size, mimeType' });
     const fileSize = parseInt(fileMeta.data.size);
-    const fileName = fileMeta.data.name;
+    const ext = path.extname(fileMeta.data.name).toLowerCase();
+    const contentType = audioMimeTypes[ext] || 'audio/mpeg';
     const range = req.headers.range;
-
-    // Determine content type
-    const ext = path.extname(fileName).toLowerCase();
-    const mimeTypes = {
-      '.mp3': 'audio/mpeg',
-      '.wav': 'audio/wav',
-      '.flac': 'audio/flac',
-      '.ogg': 'audio/ogg',
-      '.m4a': 'audio/mp4',
-      '.aac': 'audio/aac',
-      '.wma': 'audio/x-ms-wma'
-    };
-    const contentType = mimeTypes[ext] || fileMeta.data.mimeType || 'audio/mpeg';
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
-      const response = await clientInfo.drive.files.get({
-        fileId: fileId,
-        alt: 'media'
-      }, {
+      const response = await clientInfo.drive.files.get({ fileId, alt: 'media' }, {
         responseType: 'stream',
-        headers: {
-          Range: `bytes=${start}-${end}`
-        }
+        headers: { Range: `bytes=${start}-${end}` }
       });
 
       res.writeHead(206, {
@@ -534,13 +391,7 @@ app.get('/api/gdrive/stream', async (req, res) => {
       });
       response.data.pipe(res);
     } else {
-      const response = await clientInfo.drive.files.get({
-        fileId: fileId,
-        alt: 'media'
-      }, {
-        responseType: 'stream'
-      });
-
+      const response = await clientInfo.drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': contentType,
@@ -553,32 +404,481 @@ app.get('/api/gdrive/stream', async (req, res) => {
   }
 });
 
-// Disconnect Google Drive
 app.post('/api/gdrive/disconnect', (req, res) => {
   const { clientId } = req.body;
   googleDriveClients.delete(clientId);
   res.json({ success: true });
 });
 
-// Get connected Google Drive accounts
-app.get('/api/gdrive/clients', (req, res) => {
-  const clients = Array.from(googleDriveClients.entries()).map(([id, info]) => ({
-    id,
-    email: info.email
-  }));
-  res.json({ success: true, clients });
+// ==================== OneDrive API ====================
+
+app.post('/api/onedrive/config', (req, res) => {
+  const { clientId, clientSecret, redirectUri } = req.body;
+  oauthConfig.onedrive = { clientId, clientSecret, redirectUri };
+  res.json({ success: true });
 });
 
-// Check if Google Drive is configured
-app.get('/api/gdrive/status', (req, res) => {
-  res.json({
-    success: true,
-    configured: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
-    hasClients: googleDriveClients.size > 0
-  });
+app.get('/api/onedrive/status', (req, res) => {
+  res.json({ success: true, configured: !!oauthConfig.onedrive.clientId });
 });
 
-// ==================== End Google Drive API ====================
+app.get('/api/onedrive/auth-url', (req, res) => {
+  const { clientId } = oauthConfig.onedrive;
+  if (!clientId) return res.status(400).json({ success: false, error: 'OneDrive 未配置' });
+
+  const redirectUri = oauthConfig.onedrive.redirectUri || `${req.protocol}://${req.get('host')}/api/onedrive/callback`;
+  const scope = 'files.read files.read.all offline_access';
+  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}`;
+
+  res.json({ success: true, authUrl });
+});
+
+app.get('/api/onedrive/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.status(400).send('授权码未提供');
+
+  try {
+    const { clientId, clientSecret, redirectUri } = oauthConfig.onedrive;
+    const tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri || `${req.protocol}://${req.get('host')}/api/onedrive/callback`,
+        grant_type: 'authorization_code'
+      })
+    });
+
+    const tokens = await response.json();
+    if (tokens.error) throw new Error(tokens.error_description);
+
+    // Get user info
+    const userResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+    const user = await userResponse.json();
+
+    const clientIdKey = `onedrive-${Date.now()}`;
+    onedriveClients.set(clientIdKey, {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      email: user.mail || user.userPrincipalName
+    });
+
+    res.send(`<!DOCTYPE html><html><head><title>已连接</title></head><body><script>
+      window.opener.postMessage({ type: 'onedrive-connected', clientId: '${clientIdKey}', email: '${user.mail || user.userPrincipalName}' }, '*');
+      window.close();
+    </script><p>OneDrive 已连接！可以关闭此窗口。</p></body></html>`);
+  } catch (error) {
+    res.status(500).send(`认证失败: ${error.message}`);
+  }
+});
+
+app.get('/api/onedrive/list', async (req, res) => {
+  try {
+    const { clientId, folderId = 'root' } = req.query;
+    const clientInfo = onedriveClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'OneDrive 未连接' });
+
+    const url = folderId === 'root'
+      ? 'https://graph.microsoft.com/v1.0/me/drive/root/children'
+      : `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}/children`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${clientInfo.accessToken}` }
+    });
+    const data = await response.json();
+
+    const items = (data.value || []).map(item => ({
+      id: item.id,
+      name: item.name,
+      type: item.folder ? 'directory' : 'file',
+      size: item.size || 0,
+      isAudio: !item.folder && audioExtensions.some(ext => item.name.toLowerCase().endsWith(ext))
+    }));
+
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/onedrive/stream', async (req, res) => {
+  try {
+    const { clientId, fileId } = req.query;
+    const clientInfo = onedriveClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'OneDrive 未连接' });
+
+    // Get download URL
+    const metaResponse = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${fileId}`, {
+      headers: { Authorization: `Bearer ${clientInfo.accessToken}` }
+    });
+    const meta = await metaResponse.json();
+
+    if (meta['@microsoft.graph.downloadUrl']) {
+      res.redirect(meta['@microsoft.graph.downloadUrl']);
+    } else {
+      res.status(400).json({ success: false, error: '无法获取下载链接' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/onedrive/disconnect', (req, res) => {
+  const { clientId } = req.body;
+  onedriveClients.delete(clientId);
+  res.json({ success: true });
+});
+
+// ==================== Dropbox API ====================
+
+app.post('/api/dropbox/config', (req, res) => {
+  const { clientId, clientSecret, redirectUri } = req.body;
+  oauthConfig.dropbox = { clientId, clientSecret, redirectUri };
+  res.json({ success: true });
+});
+
+app.get('/api/dropbox/status', (req, res) => {
+  res.json({ success: true, configured: !!oauthConfig.dropbox.clientId });
+});
+
+app.get('/api/dropbox/auth-url', (req, res) => {
+  const { clientId } = oauthConfig.dropbox;
+  if (!clientId) return res.status(400).json({ success: false, error: 'Dropbox 未配置' });
+
+  const redirectUri = oauthConfig.dropbox.redirectUri || `${req.protocol}://${req.get('host')}/api/dropbox/callback`;
+  const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&token_access_type=offline`;
+
+  res.json({ success: true, authUrl });
+});
+
+app.get('/api/dropbox/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.status(400).send('授权码未提供');
+
+  try {
+    const { clientId, clientSecret, redirectUri } = oauthConfig.dropbox;
+
+    const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri || `${req.protocol}://${req.get('host')}/api/dropbox/callback`
+      })
+    });
+
+    const tokens = await response.json();
+    if (tokens.error) throw new Error(tokens.error_description);
+
+    // Get user info
+    const userResponse = await fetch('https://api.dropboxapi.com/2/users/get_current_account', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+    const user = await userResponse.json();
+
+    const clientIdKey = `dropbox-${Date.now()}`;
+    dropboxClients.set(clientIdKey, {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      email: user.email
+    });
+
+    res.send(`<!DOCTYPE html><html><head><title>已连接</title></head><body><script>
+      window.opener.postMessage({ type: 'dropbox-connected', clientId: '${clientIdKey}', email: '${user.email}' }, '*');
+      window.close();
+    </script><p>Dropbox 已连接！可以关闭此窗口。</p></body></html>`);
+  } catch (error) {
+    res.status(500).send(`认证失败: ${error.message}`);
+  }
+});
+
+app.get('/api/dropbox/list', async (req, res) => {
+  try {
+    const { clientId, path: folderPath = '' } = req.query;
+    const clientInfo = dropboxClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'Dropbox 未连接' });
+
+    const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${clientInfo.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ path: folderPath || '', recursive: false })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error_summary);
+
+    const items = (data.entries || []).map(item => ({
+      id: item.id,
+      name: item.name,
+      path: item.path_lower,
+      type: item['.tag'] === 'folder' ? 'directory' : 'file',
+      size: item.size || 0,
+      isAudio: item['.tag'] === 'file' && audioExtensions.some(ext => item.name.toLowerCase().endsWith(ext))
+    }));
+
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/dropbox/stream', async (req, res) => {
+  try {
+    const { clientId, path: filePath } = req.query;
+    const clientInfo = dropboxClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'Dropbox 未连接' });
+
+    // Get temporary link
+    const response = await fetch('https://api.dropboxapi.com/2/files/get_temporary_link', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${clientInfo.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ path: filePath })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error_summary);
+
+    res.redirect(data.link);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/dropbox/disconnect', (req, res) => {
+  const { clientId } = req.body;
+  dropboxClients.delete(clientId);
+  res.json({ success: true });
+});
+
+// ==================== 阿里云盘 API ====================
+
+app.post('/api/aliyun/config', (req, res) => {
+  const { refreshToken } = req.body;
+  oauthConfig.aliyun = { refreshToken };
+  res.json({ success: true });
+});
+
+app.get('/api/aliyun/status', (req, res) => {
+  res.json({ success: true, configured: !!oauthConfig.aliyun.refreshToken });
+});
+
+app.post('/api/aliyun/connect', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    // Get access token
+    const response = await fetch('https://auth.aliyundrive.com/v2/account/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: refreshToken })
+    });
+
+    const data = await response.json();
+    if (data.code) throw new Error(data.message || '刷新令牌无效');
+
+    const clientId = `aliyun-${Date.now()}`;
+    aliyunClients.set(clientId, {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      driveId: data.default_drive_id,
+      userId: data.user_id,
+      userName: data.nick_name || data.user_name
+    });
+
+    res.json({ success: true, clientId, userName: data.nick_name || data.user_name });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/aliyun/list', async (req, res) => {
+  try {
+    const { clientId, folderId = 'root' } = req.query;
+    const clientInfo = aliyunClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: '阿里云盘未连接' });
+
+    const response = await fetch('https://api.aliyundrive.com/adrive/v3/file/list', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${clientInfo.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        drive_id: clientInfo.driveId,
+        parent_file_id: folderId,
+        limit: 200,
+        order_by: 'name',
+        order_direction: 'ASC'
+      })
+    });
+
+    const data = await response.json();
+    if (data.code) throw new Error(data.message);
+
+    const items = (data.items || []).map(item => ({
+      id: item.file_id,
+      name: item.name,
+      type: item.type === 'folder' ? 'directory' : 'file',
+      size: item.size || 0,
+      isAudio: item.type === 'file' && audioExtensions.some(ext => item.name.toLowerCase().endsWith(ext))
+    }));
+
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/aliyun/stream', async (req, res) => {
+  try {
+    const { clientId, fileId } = req.query;
+    const clientInfo = aliyunClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: '阿里云盘未连接' });
+
+    const response = await fetch('https://api.aliyundrive.com/v2/file/get_download_url', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${clientInfo.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ drive_id: clientInfo.driveId, file_id: fileId })
+    });
+
+    const data = await response.json();
+    if (data.code) throw new Error(data.message);
+
+    res.redirect(data.url);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/aliyun/disconnect', (req, res) => {
+  const { clientId } = req.body;
+  aliyunClients.delete(clientId);
+  res.json({ success: true });
+});
+
+// ==================== 百度网盘 API ====================
+
+app.post('/api/baidu/config', (req, res) => {
+  const { appKey, secretKey, redirectUri } = req.body;
+  oauthConfig.baidu = { ...oauthConfig.baidu, appKey, secretKey, redirectUri };
+  res.json({ success: true });
+});
+
+app.get('/api/baidu/status', (req, res) => {
+  res.json({ success: true, configured: !!oauthConfig.baidu.appKey });
+});
+
+app.get('/api/baidu/auth-url', (req, res) => {
+  const { appKey } = oauthConfig.baidu;
+  if (!appKey) return res.status(400).json({ success: false, error: '百度网盘未配置' });
+
+  const redirectUri = oauthConfig.baidu.redirectUri || `${req.protocol}://${req.get('host')}/api/baidu/callback`;
+  const authUrl = `https://openapi.baidu.com/oauth/2.0/authorize?response_type=code&client_id=${appKey}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=basic,netdisk`;
+
+  res.json({ success: true, authUrl });
+});
+
+app.get('/api/baidu/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.status(400).send('授权码未提供');
+
+  try {
+    const { appKey, secretKey, redirectUri } = oauthConfig.baidu;
+
+    const response = await fetch(`https://openapi.baidu.com/oauth/2.0/token?grant_type=authorization_code&code=${code}&client_id=${appKey}&client_secret=${secretKey}&redirect_uri=${encodeURIComponent(redirectUri || `${req.protocol}://${req.get('host')}/api/baidu/callback`)}`);
+
+    const tokens = await response.json();
+    if (tokens.error) throw new Error(tokens.error_description);
+
+    // Get user info
+    const userResponse = await fetch(`https://pan.baidu.com/rest/2.0/xpan/nas?method=uinfo&access_token=${tokens.access_token}`);
+    const user = await userResponse.json();
+
+    const clientId = `baidu-${Date.now()}`;
+    baiduClients.set(clientId, {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      userName: user.baidu_name || user.netdisk_name
+    });
+
+    res.send(`<!DOCTYPE html><html><head><title>已连接</title></head><body><script>
+      window.opener.postMessage({ type: 'baidu-connected', clientId: '${clientId}', userName: '${user.baidu_name || user.netdisk_name}' }, '*');
+      window.close();
+    </script><p>百度网盘已连接！可以关闭此窗口。</p></body></html>`);
+  } catch (error) {
+    res.status(500).send(`认证失败: ${error.message}`);
+  }
+});
+
+app.get('/api/baidu/list', async (req, res) => {
+  try {
+    const { clientId, path: folderPath = '/' } = req.query;
+    const clientInfo = baiduClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: '百度网盘未连接' });
+
+    const response = await fetch(`https://pan.baidu.com/rest/2.0/xpan/file?method=list&dir=${encodeURIComponent(folderPath)}&access_token=${clientInfo.accessToken}&web=1`);
+    const data = await response.json();
+
+    if (data.errno) throw new Error(`错误代码: ${data.errno}`);
+
+    const items = (data.list || []).map(item => ({
+      id: item.fs_id.toString(),
+      name: item.server_filename,
+      path: item.path,
+      type: item.isdir ? 'directory' : 'file',
+      size: item.size || 0,
+      isAudio: !item.isdir && audioExtensions.some(ext => item.server_filename.toLowerCase().endsWith(ext))
+    }));
+
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/baidu/stream', async (req, res) => {
+  try {
+    const { clientId, fsId, path: filePath } = req.query;
+    const clientInfo = baiduClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: '百度网盘未连接' });
+
+    // Get download link
+    const response = await fetch(`https://pan.baidu.com/rest/2.0/xpan/multimedia?method=filemetas&access_token=${clientInfo.accessToken}&fsids=[${fsId}]&dlink=1`);
+    const data = await response.json();
+
+    if (data.errno || !data.list || !data.list[0]) throw new Error('无法获取下载链接');
+
+    const downloadUrl = `${data.list[0].dlink}&access_token=${clientInfo.accessToken}`;
+    res.redirect(downloadUrl);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/baidu/disconnect', (req, res) => {
+  const { clientId } = req.body;
+  baiduClients.delete(clientId);
+  res.json({ success: true });
+});
 
 // Serve index.html for all other routes
 app.get('*', (req, res) => {
@@ -589,16 +889,18 @@ app.listen(PORT, () => {
   console.log(`
   ╔═══════════════════════════════════════════════════════════╗
   ║                                                           ║
-  ║   🎵 WeiRuan Music Player Server Started!                 ║
+  ║   🎵 微软音乐播放器服务已启动！                              ║
   ║                                                           ║
-  ║   Local:    http://localhost:${PORT}                        ║
-  ║   Network:  http://0.0.0.0:${PORT}                          ║
+  ║   本地:    http://localhost:${PORT}                          ║
+  ║   网络:    http://0.0.0.0:${PORT}                            ║
   ║                                                           ║
-  ║   Features:                                               ║
-  ║   • Local music upload & streaming                        ║
-  ║   • WebDAV cloud storage support                          ║
-  ║   • Google Drive support                                  ║
-  ║   • Cross-origin resource sharing enabled                 ║
+  ║   支持的云存储:                                            ║
+  ║   • WebDAV (Nextcloud, ownCloud, 坚果云)                  ║
+  ║   • Google Drive                                          ║
+  ║   • OneDrive                                              ║
+  ║   • Dropbox                                               ║
+  ║   • 阿里云盘                                               ║
+  ║   • 百度网盘                                               ║
   ║                                                           ║
   ╚═══════════════════════════════════════════════════════════╝
   `);
