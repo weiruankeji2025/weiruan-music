@@ -32,6 +32,7 @@ const onedriveClients = new Map();
 const dropboxClients = new Map();
 const aliyunClients = new Map();
 const baiduClients = new Map();
+const alistClients = new Map();
 
 // CORS configuration
 app.use(cors({
@@ -880,6 +881,157 @@ app.post('/api/baidu/disconnect', (req, res) => {
   res.json({ success: true });
 });
 
+// ==================== Alist API (with CORS proxy) ====================
+
+app.post('/api/alist/connect', async (req, res) => {
+  try {
+    const { url, username, password } = req.body;
+    let baseUrl = url.replace(/\/+$/, ''); // Remove trailing slashes
+    let token = '';
+
+    // Try to login if credentials provided
+    if (username && password) {
+      const loginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const loginData = await loginResponse.json();
+      if (loginData.code === 200 && loginData.data && loginData.data.token) {
+        token = loginData.data.token;
+      } else if (loginData.code !== 200) {
+        throw new Error(loginData.message || '登录失败');
+      }
+    }
+
+    // Test connection by listing root
+    const testResponse = await fetch(`${baseUrl}/api/fs/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': token } : {})
+      },
+      body: JSON.stringify({ path: '/', page: 1, per_page: 1 })
+    });
+    const testData = await testResponse.json();
+    if (testData.code !== 200) {
+      throw new Error(testData.message || '无法访问 Alist 服务器');
+    }
+
+    const clientId = `alist-${Date.now()}`;
+    alistClients.set(clientId, { baseUrl, token });
+
+    res.json({ success: true, clientId });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/alist/list', async (req, res) => {
+  try {
+    const { clientId, path: dirPath = '/' } = req.query;
+    const clientInfo = alistClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'Alist 未连接' });
+
+    const response = await fetch(`${clientInfo.baseUrl}/api/fs/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(clientInfo.token ? { 'Authorization': clientInfo.token } : {})
+      },
+      body: JSON.stringify({ path: dirPath, page: 1, per_page: 1000, refresh: false })
+    });
+
+    const data = await response.json();
+    if (data.code !== 200) throw new Error(data.message || '获取文件列表失败');
+
+    const items = (data.data?.content || []).map(item => {
+      const fullPath = dirPath === '/' ? `/${item.name}` : `${dirPath}/${item.name}`;
+      return {
+        name: item.name,
+        path: fullPath,
+        type: item.is_dir ? 'directory' : 'file',
+        size: item.size || 0,
+        isAudio: !item.is_dir && audioExtensions.some(ext => item.name.toLowerCase().endsWith(ext))
+      };
+    });
+
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/alist/stream', async (req, res) => {
+  try {
+    const { clientId, path: filePath } = req.query;
+    const clientInfo = alistClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: 'Alist 未连接' });
+
+    // Get file info and download link
+    const response = await fetch(`${clientInfo.baseUrl}/api/fs/get`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(clientInfo.token ? { 'Authorization': clientInfo.token } : {})
+      },
+      body: JSON.stringify({ path: filePath })
+    });
+
+    const data = await response.json();
+    if (data.code !== 200) throw new Error(data.message || '获取文件信息失败');
+
+    const rawUrl = data.data?.raw_url;
+    if (!rawUrl) throw new Error('无法获取下载链接');
+
+    // Proxy the stream to handle CORS
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = audioMimeTypes[ext] || 'audio/mpeg';
+    const range = req.headers.range;
+
+    const headers = {
+      ...(range ? { Range: range } : {}),
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    };
+
+    // For some Alist sources, we need to use the sign parameter
+    if (data.data?.sign) {
+      const signedUrl = rawUrl.includes('?') ? `${rawUrl}&sign=${data.data.sign}` : `${rawUrl}?sign=${data.data.sign}`;
+      const proxyResponse = await fetch(signedUrl, { headers });
+
+      if (range && proxyResponse.status === 206) {
+        res.writeHead(206, {
+          'Content-Range': proxyResponse.headers.get('content-range'),
+          'Accept-Ranges': 'bytes',
+          'Content-Length': proxyResponse.headers.get('content-length'),
+          'Content-Type': contentType,
+        });
+      } else {
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': proxyResponse.headers.get('content-length'),
+        });
+      }
+
+      const nodeStream = require('stream');
+      const readableStream = nodeStream.Readable.fromWeb(proxyResponse.body);
+      readableStream.pipe(res);
+    } else {
+      // For direct links, redirect
+      res.redirect(rawUrl);
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/alist/disconnect', (req, res) => {
+  const { clientId } = req.body;
+  alistClients.delete(clientId);
+  res.json({ success: true });
+});
+
 // Serve index.html for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -901,6 +1053,7 @@ app.listen(PORT, () => {
   ║   • Dropbox                                               ║
   ║   • 阿里云盘                                               ║
   ║   • 百度网盘                                               ║
+  ║   • Alist (多网盘聚合)                                     ║
   ║                                                           ║
   ╚═══════════════════════════════════════════════════════════╝
   `);
