@@ -99,6 +99,21 @@
           <div class="track-info">
             <h2 class="track-title" id="trackTitle">未选择曲目</h2>
             <p class="track-artist" id="trackArtist">选择一首歌曲播放</p>
+            <p class="track-plays" id="trackPlays"></p>
+          </div>
+
+          <!-- Lyrics Panel -->
+          <div class="lyrics-panel" id="lyricsPanel">
+            <button class="lyrics-toggle" id="lyricsToggle" title="显示/隐藏歌词">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 6h16M4 12h16M4 18h10"/>
+              </svg>
+            </button>
+            <div class="lyrics-content" id="lyricsContent" style="display:none">
+              <div class="lyrics-text" id="lyricsText">
+                <p class="lyrics-placeholder">暂无歌词</p>
+              </div>
+            </div>
           </div>
 
           <!-- Progress Bar -->
@@ -268,6 +283,12 @@
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
               </svg>
               <span>Alist</span>
+            </button>
+            <button class="cloud-type-btn" data-type="quark">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+              </svg>
+              <span>夸克网盘</span>
             </button>
           </div>
 
@@ -583,6 +604,45 @@
                 <button class="btn-secondary" id="alistDisconnect">断开连接</button>
               </div>
               <div class="file-list" id="alistFileList"></div>
+            </div>
+          </div>
+
+          <!-- Quark Section -->
+          <div class="cloud-section" id="quark-section" style="display:none">
+            <div class="cloud-connect">
+              <h2>夸克网盘</h2>
+              <p class="cloud-description">使用 Cookie 连接夸克网盘</p>
+              <div id="quarkConfig">
+                <form class="connect-form" id="quarkConfigForm">
+                  <div class="form-group">
+                    <label>Cookie</label>
+                    <input type="text" id="quarkCookie" placeholder="请输入夸克网盘 Cookie" required>
+                  </div>
+                  <button type="submit" class="btn-primary full-width">连接</button>
+                </form>
+                <div class="config-help">
+                  <details>
+                    <summary>如何获取 Cookie？</summary>
+                    <ol>
+                      <li>登录夸克网盘网页版</li>
+                      <li>打开浏览器开发者工具 (F12)</li>
+                      <li>切换到 Network 标签</li>
+                      <li>刷新页面，找到任意请求</li>
+                      <li>复制请求头中的 Cookie 值</li>
+                    </ol>
+                  </details>
+                </div>
+              </div>
+            </div>
+            <div class="cloud-browser" id="quarkBrowser" style="display:none">
+              <div class="browser-header">
+                <button class="btn-icon" id="quarkBackBtn" title="返回">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <div class="current-path" id="quarkPath">/</div>
+                <button class="btn-secondary" id="quarkDisconnect">断开连接</button>
+              </div>
+              <div class="file-list" id="quarkFileList"></div>
             </div>
           </div>
 

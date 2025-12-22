@@ -61,6 +61,18 @@ class MusicPlayer {
     this.alistPath = '/';
     this.alistPathHistory = ['/'];
 
+    // 夸克网盘
+    this.quarkClientId = null;
+    this.quarkPath = '/';
+    this.quarkPathHistory = ['/'];
+
+    // 播放次数统计
+    this.playCounts = {};
+
+    // 歌词
+    this.currentLyrics = null;
+    this.lyricsVisible = false;
+
     // Visualizer
     this.visualizerStyle = 'bars';
     this.visualizerCanvas = null;
@@ -122,17 +134,23 @@ class MusicPlayer {
     if (savedVolume) {
       this.volume = parseFloat(savedVolume);
     }
+
+    const savedPlayCounts = localStorage.getItem('weiruan-music-playcounts');
+    if (savedPlayCounts) {
+      this.playCounts = JSON.parse(savedPlayCounts);
+    }
   }
 
   saveSettings() {
     localStorage.setItem('weiruan-music-settings', JSON.stringify(this.settings));
     localStorage.setItem('weiruan-music-playlist', JSON.stringify(this.playlist));
     localStorage.setItem('weiruan-music-volume', this.volume.toString());
+    localStorage.setItem('weiruan-music-playcounts', JSON.stringify(this.playCounts));
   }
 
   setupAudioElement() {
     this.audioElement.crossOrigin = 'anonymous';
-    this.audioElement.preload = 'metadata';
+    this.audioElement.preload = 'auto';
     this.audioElement.volume = this.volume;
 
     this.audioElement.addEventListener('loadedmetadata', () => this.onMetadataLoaded());
@@ -323,6 +341,14 @@ class MusicPlayer {
     document.getElementById('alistBackBtn')?.addEventListener('click', () => this.navigateAlistBack());
     document.getElementById('alistDisconnect')?.addEventListener('click', () => this.disconnectAlist());
 
+    // 夸克网盘
+    document.getElementById('quarkConfigForm')?.addEventListener('submit', (e) => this.connectQuark(e));
+    document.getElementById('quarkBackBtn')?.addEventListener('click', () => this.navigateQuarkBack());
+    document.getElementById('quarkDisconnect')?.addEventListener('click', () => this.disconnectQuark());
+
+    // 歌词切换
+    document.getElementById('lyricsToggle')?.addEventListener('click', () => this.toggleLyrics());
+
     // 设置重定向URI
     const baseUrl = `${window.location.protocol}//${window.location.host}`;
     document.getElementById('gdriveRedirectUri').textContent = `${baseUrl}/api/gdrive/callback`;
@@ -439,11 +465,18 @@ class MusicPlayer {
     this.currentIndex = index;
     const track = this.playlist[index];
 
+    // 更新播放次数
+    this.playCounts[track.id] = (this.playCounts[track.id] || 0) + 1;
+    this.saveSettings();
+
     this.audioElement.src = track.path;
     this.audioElement.play();
 
     this.updateTrackInfo(track);
     this.updatePlaylistUI();
+
+    // 获取封面和歌词
+    this.fetchCoverAndLyrics(track);
 
     if (this.settings.notifications) {
       this.showNotification(`正在播放：${track.name}`, 'info');
@@ -600,6 +633,11 @@ class MusicPlayer {
     document.getElementById('progressFill').style.width = `${percent}%`;
     document.getElementById('progressHandle').style.left = `${percent}%`;
     document.getElementById('miniProgressFill').style.width = `${percent}%`;
+
+    // 更新歌词显示
+    if (this.lyricsVisible && this.currentLyrics) {
+      this.updateLyricsDisplay();
+    }
   }
 
   onTrackEnded() {
@@ -647,12 +685,39 @@ class MusicPlayer {
     document.getElementById('trackArtist').textContent = track.artist || '未知艺术家';
     document.getElementById('miniTitle').textContent = name;
     document.getElementById('miniArtist').textContent = track.artist || '-';
+
+    // 显示播放次数
+    const playCount = this.playCounts[track.id] || 0;
+    const trackPlaysEl = document.getElementById('trackPlays');
+    if (trackPlaysEl) {
+      trackPlaysEl.textContent = playCount > 0 ? `已播放 ${playCount} 次` : '';
+    }
+
+    // 重置封面为默认
+    const albumArt = document.getElementById('albumArt');
+    albumArt.innerHTML = `
+      <div class="default-art">
+        <svg viewBox="0 0 100 100">
+          <defs><linearGradient id="discGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#1a1a2e"/><stop offset="100%" style="stop-color:#16213e"/>
+          </linearGradient></defs>
+          <circle cx="50" cy="50" r="48" fill="url(#discGradient)" stroke="var(--primary)" stroke-width="1"/>
+          <circle cx="50" cy="50" r="35" fill="none" stroke="var(--primary)" stroke-width="0.5" opacity="0.5"/>
+          <circle cx="50" cy="50" r="25" fill="none" stroke="var(--secondary)" stroke-width="0.5" opacity="0.5"/>
+          <circle cx="50" cy="50" r="15" fill="none" stroke="var(--accent)" stroke-width="0.5" opacity="0.5"/>
+          <circle cx="50" cy="50" r="8" fill="#0f0f1a"/><circle cx="50" cy="50" r="3" fill="var(--primary)"/>
+        </svg>
+      </div>
+    `;
   }
 
   // Playlist Management
   async handleFileUpload(e) {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
+
+    // 立即显示上传中状态
+    this.showNotification(`正在上传 ${files.length} 个文件...`, 'info');
 
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
@@ -673,6 +738,9 @@ class MusicPlayer {
         this.updatePlaylistUI();
         this.saveSettings();
         this.showNotification(`已添加 ${result.files.length} 首曲目`, 'success');
+
+        // 自动切换到播放列表标签页
+        this.switchTab('playlist');
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -752,18 +820,22 @@ class MusicPlayer {
       return;
     }
 
-    container.innerHTML = this.playlist.map((track, index) => `
+    container.innerHTML = this.playlist.map((track, index) => {
+      const playCount = this.playCounts[track.id] || 0;
+      return `
       <div class="playlist-item ${index === this.currentIndex ? 'active playing' : ''}" data-index="${index}">
         <span class="item-number">${index + 1}</span>
         <div class="item-art">
+          ${track.cover ? `<img src="${track.cover}" alt="cover">` : `
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-          </svg>
+          </svg>`}
         </div>
         <div class="item-info">
           <div class="item-title">${track.name.replace(/\.[^/.]+$/, '')}</div>
           <div class="item-artist">${track.artist || '未知'}</div>
         </div>
+        ${playCount > 0 ? `<span class="item-plays"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>${playCount}</span>` : ''}
         <span class="item-duration">${track.duration || '--:--'}</span>
         <div class="item-actions">
           <button class="btn-item" onclick="player.removeTrack(${index})" title="移除">
@@ -774,7 +846,7 @@ class MusicPlayer {
           </button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
 
     // Add click handlers
     container.querySelectorAll('.playlist-item').forEach(item => {
@@ -1229,7 +1301,7 @@ class MusicPlayer {
     });
 
     // 隐藏所有云存储区域
-    const sections = ['webdav', 'gdrive', 'onedrive', 'dropbox', 'aliyun', 'baidu', 'alist'];
+    const sections = ['webdav', 'gdrive', 'onedrive', 'dropbox', 'aliyun', 'baidu', 'alist', 'quark'];
     sections.forEach(section => {
       const el = document.getElementById(`${section}-section`);
       if (el) el.style.display = section === type ? 'block' : 'none';
@@ -2026,6 +2098,228 @@ class MusicPlayer {
     document.getElementById('alistConfig').style.display = 'block';
     document.getElementById('alistBrowser').style.display = 'none';
     this.showNotification('已断开 Alist 连接', 'info');
+  }
+
+  // ==================== 夸克网盘 ====================
+  async connectQuark(e) {
+    e.preventDefault();
+    const cookie = document.getElementById('quarkCookie').value;
+
+    try {
+      const response = await fetch('/api/quark/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookie })
+      });
+      const result = await response.json();
+      if (result.success) {
+        this.quarkClientId = result.clientId;
+        document.getElementById('quarkConfig').style.display = 'none';
+        document.getElementById('quarkBrowser').style.display = 'block';
+        this.loadQuarkFolder('0');
+        this.showNotification('已连接夸克网盘', 'success');
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`连接失败：${error.message}`, 'error');
+    }
+  }
+
+  async loadQuarkFolder(folderId) {
+    try {
+      const response = await fetch(`/api/quark/list?clientId=${encodeURIComponent(this.quarkClientId)}&folderId=${encodeURIComponent(folderId)}`);
+      const result = await response.json();
+      if (result.success) {
+        this.quarkPath = result.path || '/';
+        document.getElementById('quarkPath').textContent = this.quarkPath;
+        this.renderQuarkFileList(result.items, folderId);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`加载失败：${error.message}`, 'error');
+    }
+  }
+
+  renderQuarkFileList(items, currentFolderId) {
+    const container = document.getElementById('quarkFileList');
+    items.sort((a, b) => {
+      if (a.type === 'directory' && b.type !== 'directory') return -1;
+      if (a.type !== 'directory' && b.type === 'directory') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    container.innerHTML = items.map(item => `
+      <div class="file-item" data-type="${item.type}" data-id="${item.id}" data-audio="${item.isAudio}">
+        <div class="file-icon ${item.type === 'directory' ? 'folder' : item.isAudio ? 'audio' : ''}">
+          ${item.type === 'directory' ? `
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+            </svg>
+          ` : `
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
+          `}
+        </div>
+        <span class="file-name">${item.name}</span>
+        <span class="file-size">${item.type === 'directory' ? '' : this.formatFileSize(item.size)}</span>
+      </div>
+    `).join('') || '<div class="empty-folder" style="padding: 2rem; text-align: center;">文件夹为空</div>';
+
+    container.querySelectorAll('.file-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.dataset.type === 'directory') {
+          this.quarkPathHistory.push(el.dataset.id);
+          this.loadQuarkFolder(el.dataset.id);
+        } else if (el.dataset.audio === 'true') {
+          this.addQuarkTrack(el.dataset.id, el.querySelector('.file-name').textContent);
+        }
+      });
+    });
+  }
+
+  navigateQuarkBack() {
+    if (this.quarkPathHistory.length > 1) {
+      this.quarkPathHistory.pop();
+      this.loadQuarkFolder(this.quarkPathHistory[this.quarkPathHistory.length - 1]);
+    }
+  }
+
+  addQuarkTrack(fileId, name) {
+    const track = {
+      id: `quark-${fileId}`,
+      name,
+      path: `/api/quark/stream?clientId=${encodeURIComponent(this.quarkClientId)}&fileId=${encodeURIComponent(fileId)}`,
+      type: 'quark'
+    };
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加：${name}`, 'success');
+    }
+  }
+
+  async disconnectQuark() {
+    if (this.quarkClientId) {
+      await fetch('/api/quark/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.quarkClientId }) });
+    }
+    this.quarkClientId = null;
+    this.quarkPathHistory = ['/'];
+    document.getElementById('quarkConfig').style.display = 'block';
+    document.getElementById('quarkBrowser').style.display = 'none';
+    this.showNotification('已断开夸克网盘连接', 'info');
+  }
+
+  // ==================== 封面和歌词 ====================
+  async fetchCoverAndLyrics(track) {
+    const trackName = track.name.replace(/\.[^/.]+$/, '');
+
+    // 清空当前歌词
+    this.currentLyrics = null;
+    document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">正在获取歌词...</p>';
+
+    try {
+      const response = await fetch(`/api/music/info?name=${encodeURIComponent(trackName)}`);
+      const result = await response.json();
+
+      if (result.success) {
+        // 更新封面
+        if (result.cover) {
+          const albumArt = document.getElementById('albumArt');
+          const miniArt = document.getElementById('miniArt');
+          albumArt.innerHTML = `<img src="${result.cover}" alt="Album Art">`;
+          miniArt.innerHTML = `<img src="${result.cover}" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+
+          // 更新播放列表中的封面
+          track.cover = result.cover;
+          this.updatePlaylistUI();
+        }
+
+        // 更新歌词
+        if (result.lyrics) {
+          this.currentLyrics = this.parseLyrics(result.lyrics);
+          this.updateLyricsDisplay();
+        } else {
+          document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
+        }
+
+        // 更新艺术家信息
+        if (result.artist) {
+          track.artist = result.artist;
+          document.getElementById('trackArtist').textContent = result.artist;
+          document.getElementById('miniArtist').textContent = result.artist;
+        }
+      } else {
+        document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
+      }
+    } catch (error) {
+      console.error('获取音乐信息失败:', error);
+      document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
+    }
+  }
+
+  parseLyrics(lrcText) {
+    const lines = lrcText.split('\n');
+    const lyrics = [];
+
+    for (const line of lines) {
+      const match = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/);
+      if (match) {
+        const minutes = parseInt(match[1]);
+        const seconds = parseInt(match[2]);
+        const milliseconds = parseInt(match[3].padEnd(3, '0'));
+        const time = minutes * 60 + seconds + milliseconds / 1000;
+        const text = match[4].trim();
+        if (text) {
+          lyrics.push({ time, text });
+        }
+      }
+    }
+
+    return lyrics.sort((a, b) => a.time - b.time);
+  }
+
+  toggleLyrics() {
+    this.lyricsVisible = !this.lyricsVisible;
+    const content = document.getElementById('lyricsContent');
+    const toggle = document.getElementById('lyricsToggle');
+
+    content.style.display = this.lyricsVisible ? 'block' : 'none';
+    toggle.classList.toggle('active', this.lyricsVisible);
+  }
+
+  updateLyricsDisplay() {
+    if (!this.currentLyrics || this.currentLyrics.length === 0) {
+      document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
+      return;
+    }
+
+    const currentTime = this.audioElement.currentTime;
+    let activeIndex = -1;
+
+    for (let i = 0; i < this.currentLyrics.length; i++) {
+      if (this.currentLyrics[i].time <= currentTime) {
+        activeIndex = i;
+      } else {
+        break;
+      }
+    }
+
+    const container = document.getElementById('lyricsText');
+    container.innerHTML = this.currentLyrics.map((lyric, index) =>
+      `<p class="${index === activeIndex ? 'active' : ''}" data-time="${lyric.time}">${lyric.text}</p>`
+    ).join('');
+
+    // 滚动到当前歌词
+    if (activeIndex >= 0) {
+      const activeLine = container.querySelector('p.active');
+      if (activeLine) {
+        activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
   }
 }
 
