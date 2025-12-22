@@ -33,6 +33,29 @@ class MusicPlayer {
     this.gdriveFolderId = 'root';
     this.gdriveFolderHistory = ['root'];
 
+    // OneDrive
+    this.onedriveClientId = null;
+    this.onedriveConfigured = false;
+    this.onedriveFolderId = 'root';
+    this.onedriveFolderHistory = ['root'];
+
+    // Dropbox
+    this.dropboxClientId = null;
+    this.dropboxConfigured = false;
+    this.dropboxPath = '';
+    this.dropboxPathHistory = [''];
+
+    // 阿里云盘
+    this.aliyunClientId = null;
+    this.aliyunFolderId = 'root';
+    this.aliyunFolderHistory = ['root'];
+
+    // 百度网盘
+    this.baiduClientId = null;
+    this.baiduConfigured = false;
+    this.baiduPath = '/';
+    this.baiduPathHistory = ['/'];
+
     // Visualizer
     this.visualizerStyle = 'bars';
     this.visualizerCanvas = null;
@@ -253,17 +276,67 @@ class MusicPlayer {
       btn.addEventListener('click', () => this.switchCloudType(btn.dataset.type));
     });
 
-    // Google Drive config form
+    // Google Drive
     document.getElementById('gdriveConfigForm')?.addEventListener('submit', (e) => this.configureGoogleDrive(e));
-    document.getElementById('googleSignInBtn')?.addEventListener('click', () => this.signInGoogleDrive());
+    document.getElementById('gdriveSignInBtn')?.addEventListener('click', () => this.signInGoogleDrive());
     document.getElementById('gdriveReconfigure')?.addEventListener('click', () => this.showGdriveConfig());
     document.getElementById('gdriveBackBtn')?.addEventListener('click', () => this.navigateGdriveBack());
     document.getElementById('gdriveDisconnect')?.addEventListener('click', () => this.disconnectGoogleDrive());
 
-    // Listen for Google OAuth callback
+    // WebDAV
+    document.getElementById('webdavBackBtn')?.addEventListener('click', () => this.navigateWebdavBack());
+    document.getElementById('webdavDisconnect')?.addEventListener('click', () => this.disconnectWebDAV());
+
+    // OneDrive
+    document.getElementById('onedriveConfigForm')?.addEventListener('submit', (e) => this.configureOneDrive(e));
+    document.getElementById('onedriveSignInBtn')?.addEventListener('click', () => this.signInOneDrive());
+    document.getElementById('onedriveReconfigure')?.addEventListener('click', () => this.showOnedriveConfig());
+    document.getElementById('onedriveBackBtn')?.addEventListener('click', () => this.navigateOnedriveBack());
+    document.getElementById('onedriveDisconnect')?.addEventListener('click', () => this.disconnectOneDrive());
+
+    // Dropbox
+    document.getElementById('dropboxConfigForm')?.addEventListener('submit', (e) => this.configureDropbox(e));
+    document.getElementById('dropboxSignInBtn')?.addEventListener('click', () => this.signInDropbox());
+    document.getElementById('dropboxReconfigure')?.addEventListener('click', () => this.showDropboxConfig());
+    document.getElementById('dropboxBackBtn')?.addEventListener('click', () => this.navigateDropboxBack());
+    document.getElementById('dropboxDisconnect')?.addEventListener('click', () => this.disconnectDropbox());
+
+    // 阿里云盘
+    document.getElementById('aliyunConfigForm')?.addEventListener('submit', (e) => this.connectAliyun(e));
+    document.getElementById('aliyunBackBtn')?.addEventListener('click', () => this.navigateAliyunBack());
+    document.getElementById('aliyunDisconnect')?.addEventListener('click', () => this.disconnectAliyun());
+
+    // 百度网盘
+    document.getElementById('baiduConfigForm')?.addEventListener('submit', (e) => this.configureBaidu(e));
+    document.getElementById('baiduSignInBtn')?.addEventListener('click', () => this.signInBaidu());
+    document.getElementById('baiduReconfigure')?.addEventListener('click', () => this.showBaiduConfig());
+    document.getElementById('baiduBackBtn')?.addEventListener('click', () => this.navigateBaiduBack());
+    document.getElementById('baiduDisconnect')?.addEventListener('click', () => this.disconnectBaidu());
+
+    // 设置重定向URI
+    const baseUrl = `${window.location.protocol}//${window.location.host}`;
+    document.getElementById('gdriveRedirectUri').textContent = `${baseUrl}/api/gdrive/callback`;
+    document.getElementById('onedriveRedirectUri').textContent = `${baseUrl}/api/onedrive/callback`;
+    document.getElementById('dropboxRedirectUri').textContent = `${baseUrl}/api/dropbox/callback`;
+    document.getElementById('baiduRedirectUri').textContent = `${baseUrl}/api/baidu/callback`;
+
+    // Listen for OAuth callbacks
     window.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'gdrive-connected') {
-        this.onGoogleDriveConnected(e.data.clientId, e.data.email);
+      if (e.data) {
+        switch (e.data.type) {
+          case 'gdrive-connected':
+            this.onGoogleDriveConnected(e.data.clientId, e.data.email);
+            break;
+          case 'onedrive-connected':
+            this.onOneDriveConnected(e.data.clientId, e.data.email);
+            break;
+          case 'dropbox-connected':
+            this.onDropboxConnected(e.data.clientId, e.data.email);
+            break;
+          case 'baidu-connected':
+            this.onBaiduConnected(e.data.clientId, e.data.userName);
+            break;
+        }
       }
     });
   }
@@ -507,10 +580,15 @@ class MusicPlayer {
   onTimeUpdate() {
     const current = this.audioElement.currentTime;
     const duration = this.audioElement.duration;
-    const percent = (current / duration) * 100 || 0;
+
+    // 确保有有效的时长
+    if (!duration || isNaN(duration)) return;
+
+    const percent = (current / duration) * 100;
 
     document.getElementById('currentTime').textContent = this.formatTime(current);
     document.getElementById('progressFill').style.width = `${percent}%`;
+    document.getElementById('progressHandle').style.left = `${percent}%`;
     document.getElementById('miniProgressFill').style.width = `${percent}%`;
   }
 
@@ -1329,6 +1407,496 @@ class MusicPlayer {
     this.gdriveFolderHistory = ['root'];
     this.showGdriveConnect();
     this.showNotification('已断开 Google 云盘连接', 'info');
+  }
+
+  // WebDAV navigation
+  navigateWebdavBack() {
+    if (this.pathHistory.length > 1) {
+      this.pathHistory.pop();
+      const previousPath = this.pathHistory[this.pathHistory.length - 1];
+      this.loadWebDAVDirectory(previousPath);
+    }
+  }
+
+  // ==================== OneDrive ====================
+  async configureOneDrive(e) {
+    e.preventDefault();
+    const clientId = document.getElementById('onedriveClientId').value;
+    const clientSecret = document.getElementById('onedriveClientSecret').value;
+    const redirectUri = `${window.location.protocol}//${window.location.host}/api/onedrive/callback`;
+
+    try {
+      const response = await fetch('/api/onedrive/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, clientSecret, redirectUri })
+      });
+      const result = await response.json();
+      if (result.success) {
+        this.onedriveConfigured = true;
+        document.getElementById('onedriveConfig').style.display = 'none';
+        document.getElementById('onedriveConnect').style.display = 'block';
+        this.showNotification('OneDrive 配置成功', 'success');
+      }
+    } catch (error) {
+      this.showNotification(`配置失败：${error.message}`, 'error');
+    }
+  }
+
+  showOnedriveConfig() {
+    document.getElementById('onedriveConfig').style.display = 'block';
+    document.getElementById('onedriveConnect').style.display = 'none';
+    document.getElementById('onedriveBrowser').style.display = 'none';
+  }
+
+  async signInOneDrive() {
+    try {
+      const response = await fetch('/api/onedrive/auth-url');
+      const result = await response.json();
+      if (result.success) {
+        window.open(result.authUrl, 'OneDrive Sign In', 'width=600,height=700');
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`登录失败：${error.message}`, 'error');
+    }
+  }
+
+  onOneDriveConnected(clientId, email) {
+    this.onedriveClientId = clientId;
+    document.getElementById('onedriveEmail').textContent = email;
+    document.getElementById('onedriveConfig').style.display = 'none';
+    document.getElementById('onedriveConnect').style.display = 'none';
+    document.getElementById('onedriveBrowser').style.display = 'block';
+    this.loadOneDriveFolder('root');
+    this.showNotification(`已登录：${email}`, 'success');
+  }
+
+  async loadOneDriveFolder(folderId) {
+    try {
+      const response = await fetch(`/api/onedrive/list?clientId=${encodeURIComponent(this.onedriveClientId)}&folderId=${encodeURIComponent(folderId)}`);
+      const result = await response.json();
+      if (result.success) {
+        this.onedriveFolderId = folderId;
+        this.renderOnedriveFileList(result.items);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`加载失败：${error.message}`, 'error');
+    }
+  }
+
+  renderOnedriveFileList(items) {
+    const container = document.getElementById('onedriveFileList');
+    items.sort((a, b) => {
+      if (a.type === 'directory' && b.type !== 'directory') return -1;
+      if (a.type !== 'directory' && b.type === 'directory') return 1;
+      return a.name.localeCompare(b.name);
+    });
+    container.innerHTML = items.map(item => `
+      <div class="file-item" data-type="${item.type}" data-id="${item.id}" data-audio="${item.isAudio}">
+        <div class="file-icon ${item.type === 'directory' ? 'folder' : item.isAudio ? 'audio' : ''}">
+          ${item.type === 'directory' ? '📁' : item.isAudio ? '🎵' : '📄'}
+        </div>
+        <span class="file-name">${item.name}</span>
+      </div>
+    `).join('') || '<div class="empty-folder">文件夹为空</div>';
+
+    container.querySelectorAll('.file-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.dataset.type === 'directory') {
+          this.onedriveFolderHistory.push(el.dataset.id);
+          this.loadOneDriveFolder(el.dataset.id);
+        } else if (el.dataset.audio === 'true') {
+          this.addOnedriveTrack(el.dataset.id, el.querySelector('.file-name').textContent);
+        }
+      });
+    });
+  }
+
+  navigateOnedriveBack() {
+    if (this.onedriveFolderHistory.length > 1) {
+      this.onedriveFolderHistory.pop();
+      this.loadOneDriveFolder(this.onedriveFolderHistory[this.onedriveFolderHistory.length - 1]);
+    }
+  }
+
+  addOnedriveTrack(fileId, name) {
+    const track = {
+      id: `onedrive-${fileId}`,
+      name,
+      path: `/api/onedrive/stream?clientId=${encodeURIComponent(this.onedriveClientId)}&fileId=${encodeURIComponent(fileId)}`,
+      type: 'onedrive'
+    };
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加：${name}`, 'success');
+    }
+  }
+
+  async disconnectOneDrive() {
+    if (this.onedriveClientId) {
+      await fetch('/api/onedrive/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.onedriveClientId }) });
+    }
+    this.onedriveClientId = null;
+    this.onedriveFolderHistory = ['root'];
+    this.showOnedriveConfig();
+    this.showNotification('已断开 OneDrive 连接', 'info');
+  }
+
+  // ==================== Dropbox ====================
+  async configureDropbox(e) {
+    e.preventDefault();
+    const clientId = document.getElementById('dropboxClientId').value;
+    const clientSecret = document.getElementById('dropboxClientSecret').value;
+    const redirectUri = `${window.location.protocol}//${window.location.host}/api/dropbox/callback`;
+
+    try {
+      const response = await fetch('/api/dropbox/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, clientSecret, redirectUri })
+      });
+      if ((await response.json()).success) {
+        this.dropboxConfigured = true;
+        document.getElementById('dropboxConfig').style.display = 'none';
+        document.getElementById('dropboxConnect').style.display = 'block';
+        this.showNotification('Dropbox 配置成功', 'success');
+      }
+    } catch (error) {
+      this.showNotification(`配置失败：${error.message}`, 'error');
+    }
+  }
+
+  showDropboxConfig() {
+    document.getElementById('dropboxConfig').style.display = 'block';
+    document.getElementById('dropboxConnect').style.display = 'none';
+    document.getElementById('dropboxBrowser').style.display = 'none';
+  }
+
+  async signInDropbox() {
+    try {
+      const response = await fetch('/api/dropbox/auth-url');
+      const result = await response.json();
+      if (result.success) {
+        window.open(result.authUrl, 'Dropbox Sign In', 'width=600,height=700');
+      }
+    } catch (error) {
+      this.showNotification(`登录失败：${error.message}`, 'error');
+    }
+  }
+
+  onDropboxConnected(clientId, email) {
+    this.dropboxClientId = clientId;
+    document.getElementById('dropboxEmail').textContent = email;
+    document.getElementById('dropboxConfig').style.display = 'none';
+    document.getElementById('dropboxConnect').style.display = 'none';
+    document.getElementById('dropboxBrowser').style.display = 'block';
+    this.loadDropboxFolder('');
+    this.showNotification(`已登录：${email}`, 'success');
+  }
+
+  async loadDropboxFolder(path) {
+    try {
+      const response = await fetch(`/api/dropbox/list?clientId=${encodeURIComponent(this.dropboxClientId)}&path=${encodeURIComponent(path)}`);
+      const result = await response.json();
+      if (result.success) {
+        this.dropboxPath = path;
+        this.renderDropboxFileList(result.items);
+      }
+    } catch (error) {
+      this.showNotification(`加载失败：${error.message}`, 'error');
+    }
+  }
+
+  renderDropboxFileList(items) {
+    const container = document.getElementById('dropboxFileList');
+    items.sort((a, b) => {
+      if (a.type === 'directory' && b.type !== 'directory') return -1;
+      if (a.type !== 'directory' && b.type === 'directory') return 1;
+      return a.name.localeCompare(b.name);
+    });
+    container.innerHTML = items.map(item => `
+      <div class="file-item" data-type="${item.type}" data-path="${item.path}" data-audio="${item.isAudio}">
+        <div class="file-icon ${item.type === 'directory' ? 'folder' : item.isAudio ? 'audio' : ''}">
+          ${item.type === 'directory' ? '📁' : item.isAudio ? '🎵' : '📄'}
+        </div>
+        <span class="file-name">${item.name}</span>
+      </div>
+    `).join('') || '<div class="empty-folder">文件夹为空</div>';
+
+    container.querySelectorAll('.file-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.dataset.type === 'directory') {
+          this.dropboxPathHistory.push(el.dataset.path);
+          this.loadDropboxFolder(el.dataset.path);
+        } else if (el.dataset.audio === 'true') {
+          this.addDropboxTrack(el.dataset.path, el.querySelector('.file-name').textContent);
+        }
+      });
+    });
+  }
+
+  navigateDropboxBack() {
+    if (this.dropboxPathHistory.length > 1) {
+      this.dropboxPathHistory.pop();
+      this.loadDropboxFolder(this.dropboxPathHistory[this.dropboxPathHistory.length - 1]);
+    }
+  }
+
+  addDropboxTrack(filePath, name) {
+    const track = {
+      id: `dropbox-${filePath}`,
+      name,
+      path: `/api/dropbox/stream?clientId=${encodeURIComponent(this.dropboxClientId)}&path=${encodeURIComponent(filePath)}`,
+      type: 'dropbox'
+    };
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加：${name}`, 'success');
+    }
+  }
+
+  async disconnectDropbox() {
+    if (this.dropboxClientId) {
+      await fetch('/api/dropbox/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.dropboxClientId }) });
+    }
+    this.dropboxClientId = null;
+    this.dropboxPathHistory = [''];
+    this.showDropboxConfig();
+    this.showNotification('已断开 Dropbox 连接', 'info');
+  }
+
+  // ==================== 阿里云盘 ====================
+  async connectAliyun(e) {
+    e.preventDefault();
+    const refreshToken = document.getElementById('aliyunRefreshToken').value;
+
+    try {
+      const response = await fetch('/api/aliyun/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      });
+      const result = await response.json();
+      if (result.success) {
+        this.aliyunClientId = result.clientId;
+        document.getElementById('aliyunUserName').textContent = result.userName;
+        document.getElementById('aliyunConfig').style.display = 'none';
+        document.getElementById('aliyunBrowser').style.display = 'block';
+        this.loadAliyunFolder('root');
+        this.showNotification(`已登录：${result.userName}`, 'success');
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      this.showNotification(`连接失败：${error.message}`, 'error');
+    }
+  }
+
+  async loadAliyunFolder(folderId) {
+    try {
+      const response = await fetch(`/api/aliyun/list?clientId=${encodeURIComponent(this.aliyunClientId)}&folderId=${encodeURIComponent(folderId)}`);
+      const result = await response.json();
+      if (result.success) {
+        this.aliyunFolderId = folderId;
+        this.renderAliyunFileList(result.items);
+      }
+    } catch (error) {
+      this.showNotification(`加载失败：${error.message}`, 'error');
+    }
+  }
+
+  renderAliyunFileList(items) {
+    const container = document.getElementById('aliyunFileList');
+    items.sort((a, b) => {
+      if (a.type === 'directory' && b.type !== 'directory') return -1;
+      if (a.type !== 'directory' && b.type === 'directory') return 1;
+      return a.name.localeCompare(b.name);
+    });
+    container.innerHTML = items.map(item => `
+      <div class="file-item" data-type="${item.type}" data-id="${item.id}" data-audio="${item.isAudio}">
+        <div class="file-icon ${item.type === 'directory' ? 'folder' : item.isAudio ? 'audio' : ''}">
+          ${item.type === 'directory' ? '📁' : item.isAudio ? '🎵' : '📄'}
+        </div>
+        <span class="file-name">${item.name}</span>
+      </div>
+    `).join('') || '<div class="empty-folder">文件夹为空</div>';
+
+    container.querySelectorAll('.file-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.dataset.type === 'directory') {
+          this.aliyunFolderHistory.push(el.dataset.id);
+          this.loadAliyunFolder(el.dataset.id);
+        } else if (el.dataset.audio === 'true') {
+          this.addAliyunTrack(el.dataset.id, el.querySelector('.file-name').textContent);
+        }
+      });
+    });
+  }
+
+  navigateAliyunBack() {
+    if (this.aliyunFolderHistory.length > 1) {
+      this.aliyunFolderHistory.pop();
+      this.loadAliyunFolder(this.aliyunFolderHistory[this.aliyunFolderHistory.length - 1]);
+    }
+  }
+
+  addAliyunTrack(fileId, name) {
+    const track = {
+      id: `aliyun-${fileId}`,
+      name,
+      path: `/api/aliyun/stream?clientId=${encodeURIComponent(this.aliyunClientId)}&fileId=${encodeURIComponent(fileId)}`,
+      type: 'aliyun'
+    };
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加：${name}`, 'success');
+    }
+  }
+
+  async disconnectAliyun() {
+    if (this.aliyunClientId) {
+      await fetch('/api/aliyun/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.aliyunClientId }) });
+    }
+    this.aliyunClientId = null;
+    this.aliyunFolderHistory = ['root'];
+    document.getElementById('aliyunConfig').style.display = 'block';
+    document.getElementById('aliyunBrowser').style.display = 'none';
+    this.showNotification('已断开阿里云盘连接', 'info');
+  }
+
+  // ==================== 百度网盘 ====================
+  async configureBaidu(e) {
+    e.preventDefault();
+    const appKey = document.getElementById('baiduAppKey').value;
+    const secretKey = document.getElementById('baiduSecretKey').value;
+    const redirectUri = `${window.location.protocol}//${window.location.host}/api/baidu/callback`;
+
+    try {
+      const response = await fetch('/api/baidu/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appKey, secretKey, redirectUri })
+      });
+      if ((await response.json()).success) {
+        this.baiduConfigured = true;
+        document.getElementById('baiduConfig').style.display = 'none';
+        document.getElementById('baiduConnect').style.display = 'block';
+        this.showNotification('百度网盘配置成功', 'success');
+      }
+    } catch (error) {
+      this.showNotification(`配置失败：${error.message}`, 'error');
+    }
+  }
+
+  showBaiduConfig() {
+    document.getElementById('baiduConfig').style.display = 'block';
+    document.getElementById('baiduConnect').style.display = 'none';
+    document.getElementById('baiduBrowser').style.display = 'none';
+  }
+
+  async signInBaidu() {
+    try {
+      const response = await fetch('/api/baidu/auth-url');
+      const result = await response.json();
+      if (result.success) {
+        window.open(result.authUrl, '百度网盘登录', 'width=600,height=700');
+      }
+    } catch (error) {
+      this.showNotification(`登录失败：${error.message}`, 'error');
+    }
+  }
+
+  onBaiduConnected(clientId, userName) {
+    this.baiduClientId = clientId;
+    document.getElementById('baiduUserName').textContent = userName;
+    document.getElementById('baiduConfig').style.display = 'none';
+    document.getElementById('baiduConnect').style.display = 'none';
+    document.getElementById('baiduBrowser').style.display = 'block';
+    this.loadBaiduFolder('/');
+    this.showNotification(`已登录：${userName}`, 'success');
+  }
+
+  async loadBaiduFolder(path) {
+    try {
+      const response = await fetch(`/api/baidu/list?clientId=${encodeURIComponent(this.baiduClientId)}&path=${encodeURIComponent(path)}`);
+      const result = await response.json();
+      if (result.success) {
+        this.baiduPath = path;
+        this.renderBaiduFileList(result.items);
+      }
+    } catch (error) {
+      this.showNotification(`加载失败：${error.message}`, 'error');
+    }
+  }
+
+  renderBaiduFileList(items) {
+    const container = document.getElementById('baiduFileList');
+    items.sort((a, b) => {
+      if (a.type === 'directory' && b.type !== 'directory') return -1;
+      if (a.type !== 'directory' && b.type === 'directory') return 1;
+      return a.name.localeCompare(b.name);
+    });
+    container.innerHTML = items.map(item => `
+      <div class="file-item" data-type="${item.type}" data-id="${item.id}" data-path="${item.path}" data-audio="${item.isAudio}">
+        <div class="file-icon ${item.type === 'directory' ? 'folder' : item.isAudio ? 'audio' : ''}">
+          ${item.type === 'directory' ? '📁' : item.isAudio ? '🎵' : '📄'}
+        </div>
+        <span class="file-name">${item.name}</span>
+      </div>
+    `).join('') || '<div class="empty-folder">文件夹为空</div>';
+
+    container.querySelectorAll('.file-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.dataset.type === 'directory') {
+          this.baiduPathHistory.push(el.dataset.path);
+          this.loadBaiduFolder(el.dataset.path);
+        } else if (el.dataset.audio === 'true') {
+          this.addBaiduTrack(el.dataset.id, el.dataset.path, el.querySelector('.file-name').textContent);
+        }
+      });
+    });
+  }
+
+  navigateBaiduBack() {
+    if (this.baiduPathHistory.length > 1) {
+      this.baiduPathHistory.pop();
+      this.loadBaiduFolder(this.baiduPathHistory[this.baiduPathHistory.length - 1]);
+    }
+  }
+
+  addBaiduTrack(fsId, filePath, name) {
+    const track = {
+      id: `baidu-${fsId}`,
+      name,
+      path: `/api/baidu/stream?clientId=${encodeURIComponent(this.baiduClientId)}&fsId=${encodeURIComponent(fsId)}&path=${encodeURIComponent(filePath)}`,
+      type: 'baidu'
+    };
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加：${name}`, 'success');
+    }
+  }
+
+  async disconnectBaidu() {
+    if (this.baiduClientId) {
+      await fetch('/api/baidu/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.baiduClientId }) });
+    }
+    this.baiduClientId = null;
+    this.baiduPathHistory = ['/'];
+    this.showBaiduConfig();
+    this.showNotification('已断开百度网盘连接', 'info');
   }
 }
 
