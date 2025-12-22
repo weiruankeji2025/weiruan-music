@@ -363,7 +363,7 @@ class MusicPlayer {
     this.updatePlaylistUI();
 
     if (this.settings.notifications) {
-      this.showNotification(`Now Playing: ${track.name}`, 'info');
+      this.showNotification(`正在播放：${track.name}`, 'info');
     }
   }
 
@@ -400,7 +400,7 @@ class MusicPlayer {
   toggleShuffle() {
     this.isShuffle = !this.isShuffle;
     document.getElementById('shuffleBtn').classList.toggle('active', this.isShuffle);
-    this.showNotification(`Shuffle: ${this.isShuffle ? 'On' : 'Off'}`, 'info');
+    this.showNotification(`随机播放：${this.isShuffle ? '开启' : '关闭'}`, 'info');
   }
 
   toggleRepeat() {
@@ -432,8 +432,8 @@ class MusicPlayer {
       `;
     }
 
-    const modeNames = { none: 'Off', all: 'All', one: 'One' };
-    this.showNotification(`Repeat: ${modeNames[this.repeatMode]}`, 'info');
+    const modeNames = { none: '关闭', all: '全部循环', one: '单曲循环' };
+    this.showNotification(`重复模式：${modeNames[this.repeatMode]}`, 'info');
   }
 
   seek(seconds) {
@@ -541,7 +541,7 @@ class MusicPlayer {
 
   onError(e) {
     console.error('Audio error:', e);
-    this.showNotification('Error playing track', 'error');
+    this.showNotification('播放出错', 'error');
   }
 
   updatePlayButtons(playing) {
@@ -556,7 +556,7 @@ class MusicPlayer {
   updateTrackInfo(track) {
     const name = track.name.replace(/\.[^/.]+$/, ''); // Remove extension
     document.getElementById('trackTitle').textContent = name;
-    document.getElementById('trackArtist').textContent = track.artist || 'Unknown Artist';
+    document.getElementById('trackArtist').textContent = track.artist || '未知艺术家';
     document.getElementById('miniTitle').textContent = name;
     document.getElementById('miniArtist').textContent = track.artist || '-';
   }
@@ -584,11 +584,11 @@ class MusicPlayer {
         });
         this.updatePlaylistUI();
         this.saveSettings();
-        this.showNotification(`Added ${result.files.length} track(s)`, 'success');
+        this.showNotification(`已添加 ${result.files.length} 首曲目`, 'success');
       }
     } catch (error) {
       console.error('Upload error:', error);
-      this.showNotification('Upload failed', 'error');
+      this.showNotification('上传失败', 'error');
     }
 
     e.target.value = '';
@@ -618,9 +618,9 @@ class MusicPlayer {
     this.audioElement.src = '';
     this.updatePlaylistUI();
     this.saveSettings();
-    document.getElementById('trackTitle').textContent = 'No Track Selected';
-    document.getElementById('trackArtist').textContent = 'Select a track to play';
-    this.showNotification('Playlist cleared', 'info');
+    document.getElementById('trackTitle').textContent = '未选择曲目';
+    document.getElementById('trackArtist').textContent = '选择一首歌曲播放';
+    this.showNotification('播放列表已清空', 'info');
   }
 
   removeTrack(index) {
@@ -645,7 +645,7 @@ class MusicPlayer {
     const trackCount = document.getElementById('trackCount');
     const totalDuration = document.getElementById('totalDuration');
 
-    trackCount.textContent = `${this.playlist.length} track${this.playlist.length !== 1 ? 's' : ''}`;
+    trackCount.textContent = `${this.playlist.length} 首曲目`;
 
     if (this.playlist.length === 0) {
       container.innerHTML = `
@@ -657,8 +657,8 @@ class MusicPlayer {
               <path d="M55 35 L55 65 L75 50 Z" fill="currentColor" opacity="0.3"/>
             </svg>
           </div>
-          <p>No tracks in playlist</p>
-          <span>Upload music or connect to cloud storage</span>
+          <p>播放列表为空</p>
+          <span>上传音乐或连接云存储</span>
         </div>
       `;
       return;
@@ -674,11 +674,11 @@ class MusicPlayer {
         </div>
         <div class="item-info">
           <div class="item-title">${track.name.replace(/\.[^/.]+$/, '')}</div>
-          <div class="item-artist">${track.artist || 'Unknown'}</div>
+          <div class="item-artist">${track.artist || '未知'}</div>
         </div>
         <span class="item-duration">${track.duration || '--:--'}</span>
         <div class="item-actions">
-          <button class="btn-item" onclick="player.removeTrack(${index})" title="Remove">
+          <button class="btn-item" onclick="player.removeTrack(${index})" title="移除">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -719,12 +719,12 @@ class MusicPlayer {
         document.querySelector('.connect-form').style.display = 'none';
         document.getElementById('cloudBrowser').style.display = 'block';
         this.loadWebDAVDirectory('/');
-        this.showNotification('Connected to WebDAV', 'success');
+        this.showNotification('已连接到 WebDAV', 'success');
       } else {
         throw new Error(result.error);
       }
     } catch (error) {
-      this.showNotification(`Connection failed: ${error.message}`, 'error');
+      this.showNotification(`连接失败：${error.message}`, 'error');
     }
   }
 
@@ -741,7 +741,7 @@ class MusicPlayer {
         throw new Error(result.error);
       }
     } catch (error) {
-      this.showNotification(`Failed to load directory: ${error.message}`, 'error');
+      this.showNotification(`加载目录失败：${error.message}`, 'error');
     }
   }
 
@@ -810,7 +810,7 @@ class MusicPlayer {
       this.playlist.push(track);
       this.updatePlaylistUI();
       this.saveSettings();
-      this.showNotification(`Added: ${name}`, 'success');
+      this.showNotification(`已添加：${name}`, 'success');
     }
   }
 
@@ -827,7 +827,7 @@ class MusicPlayer {
     this.pathHistory = ['/'];
     document.querySelector('.connect-form').style.display = 'block';
     document.getElementById('cloudBrowser').style.display = 'none';
-    this.showNotification('Disconnected from WebDAV', 'info');
+    this.showNotification('已断开 WebDAV 连接', 'info');
   }
 
   // Equalizer
@@ -1162,12 +1162,12 @@ class MusicPlayer {
       if (result.success) {
         this.gdriveConfigured = true;
         this.showGdriveConnect();
-        this.showNotification('Google Drive configured successfully', 'success');
+        this.showNotification('Google 云盘配置成功', 'success');
       } else {
         throw new Error(result.error);
       }
     } catch (error) {
-      this.showNotification(`Configuration failed: ${error.message}`, 'error');
+      this.showNotification(`配置失败：${error.message}`, 'error');
     }
   }
 
@@ -1203,7 +1203,7 @@ class MusicPlayer {
         throw new Error(result.error);
       }
     } catch (error) {
-      this.showNotification(`Sign in failed: ${error.message}`, 'error');
+      this.showNotification(`登录失败：${error.message}`, 'error');
     }
   }
 
@@ -1214,7 +1214,7 @@ class MusicPlayer {
     document.getElementById('gdriveConnect').style.display = 'none';
     document.getElementById('gdriveBrowser').style.display = 'block';
     this.loadGoogleDriveFolder('root');
-    this.showNotification(`Connected as ${email}`, 'success');
+    this.showNotification(`已登录：${email}`, 'success');
   }
 
   async loadGoogleDriveFolder(folderId) {
@@ -1229,7 +1229,7 @@ class MusicPlayer {
         throw new Error(result.error);
       }
     } catch (error) {
-      this.showNotification(`Failed to load folder: ${error.message}`, 'error');
+      this.showNotification(`加载文件夹失败：${error.message}`, 'error');
     }
   }
 
@@ -1246,7 +1246,7 @@ class MusicPlayer {
     if (items.length === 0) {
       container.innerHTML = `
         <div class="empty-folder" style="padding: 2rem; text-align: center; color: var(--text-muted);">
-          <p>This folder is empty</p>
+          <p>此文件夹为空</p>
         </div>
       `;
       return;
@@ -1308,7 +1308,7 @@ class MusicPlayer {
       this.playlist.push(track);
       this.updatePlaylistUI();
       this.saveSettings();
-      this.showNotification(`Added: ${name}`, 'success');
+      this.showNotification(`已添加：${name}`, 'success');
     }
   }
 
@@ -1328,7 +1328,7 @@ class MusicPlayer {
     this.gdriveFolderId = 'root';
     this.gdriveFolderHistory = ['root'];
     this.showGdriveConnect();
-    this.showNotification('Disconnected from Google Drive', 'info');
+    this.showNotification('已断开 Google 云盘连接', 'info');
   }
 }
 
