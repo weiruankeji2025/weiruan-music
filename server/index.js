@@ -33,6 +33,7 @@ const dropboxClients = new Map();
 const aliyunClients = new Map();
 const baiduClients = new Map();
 const alistClients = new Map();
+const quarkClients = new Map();
 
 // CORS configuration
 app.use(cors({
@@ -1032,6 +1033,191 @@ app.post('/api/alist/disconnect', (req, res) => {
   res.json({ success: true });
 });
 
+// ==================== 夸克网盘 API ====================
+
+app.post('/api/quark/connect', async (req, res) => {
+  try {
+    const { cookie } = req.body;
+    if (!cookie) {
+      throw new Error('请提供 Cookie');
+    }
+
+    // 验证 Cookie 是否有效
+    const testResponse = await fetch('https://drive-pc.quark.cn/1/clouddrive/file/sort?pr=ucpro&fr=pc&pdir_fid=0&_page=1&_size=1', {
+      headers: {
+        'Cookie': cookie,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    const testData = await testResponse.json();
+    if (testData.status !== 200) {
+      throw new Error(testData.message || 'Cookie 无效或已过期');
+    }
+
+    const clientId = `quark-${Date.now()}`;
+    quarkClients.set(clientId, { cookie });
+
+    res.json({ success: true, clientId });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/quark/list', async (req, res) => {
+  try {
+    const { clientId, folderId = '0' } = req.query;
+    const clientInfo = quarkClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: '夸克网盘未连接' });
+
+    const response = await fetch(`https://drive-pc.quark.cn/1/clouddrive/file/sort?pr=ucpro&fr=pc&pdir_fid=${folderId}&_page=1&_size=200&_fetch_total=1`, {
+      headers: {
+        'Cookie': clientInfo.cookie,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    const data = await response.json();
+    if (data.status !== 200) throw new Error(data.message || '获取文件列表失败');
+
+    const items = (data.data?.list || []).map(item => ({
+      id: item.fid,
+      name: item.file_name,
+      type: item.file ? 'file' : 'directory',
+      size: item.size || 0,
+      isAudio: item.file && audioExtensions.some(ext => item.file_name.toLowerCase().endsWith(ext))
+    }));
+
+    res.json({ success: true, items, path: '/' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/quark/stream', async (req, res) => {
+  try {
+    const { clientId, fileId } = req.query;
+    const clientInfo = quarkClients.get(clientId);
+    if (!clientInfo) return res.status(400).json({ success: false, error: '夸克网盘未连接' });
+
+    // 获取下载链接
+    const downloadResponse = await fetch('https://drive-pc.quark.cn/1/clouddrive/file/download?pr=ucpro&fr=pc', {
+      method: 'POST',
+      headers: {
+        'Cookie': clientInfo.cookie,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: JSON.stringify({ fids: [fileId] })
+    });
+
+    const downloadData = await downloadResponse.json();
+    if (downloadData.status !== 200 || !downloadData.data?.[0]?.download_url) {
+      throw new Error('无法获取下载链接');
+    }
+
+    const downloadUrl = downloadData.data[0].download_url;
+
+    // 代理流式传输
+    const range = req.headers.range;
+    const headers = {
+      'Cookie': clientInfo.cookie,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ...(range ? { Range: range } : {})
+    };
+
+    const proxyResponse = await fetch(downloadUrl, { headers });
+
+    const contentType = proxyResponse.headers.get('content-type') || 'audio/mpeg';
+
+    if (range && proxyResponse.status === 206) {
+      res.writeHead(206, {
+        'Content-Range': proxyResponse.headers.get('content-range'),
+        'Accept-Ranges': 'bytes',
+        'Content-Length': proxyResponse.headers.get('content-length'),
+        'Content-Type': contentType,
+      });
+    } else {
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': proxyResponse.headers.get('content-length'),
+      });
+    }
+
+    const nodeStream = require('stream');
+    const readableStream = nodeStream.Readable.fromWeb(proxyResponse.body);
+    readableStream.pipe(res);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/quark/disconnect', (req, res) => {
+  const { clientId } = req.body;
+  quarkClients.delete(clientId);
+  res.json({ success: true });
+});
+
+// ==================== 音乐信息API (封面/歌词) ====================
+
+app.get('/api/music/info', async (req, res) => {
+  try {
+    const { name } = req.query;
+    if (!name) {
+      return res.json({ success: false, error: '缺少歌曲名称' });
+    }
+
+    // 搜索歌曲信息 (使用网易云音乐 API)
+    const searchUrl = `https://music.163.com/api/search/get?s=${encodeURIComponent(name)}&type=1&limit=1`;
+    const searchResponse = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://music.163.com/'
+      }
+    });
+
+    const searchData = await searchResponse.json();
+    if (!searchData.result?.songs?.[0]) {
+      return res.json({ success: false, error: '未找到歌曲' });
+    }
+
+    const song = searchData.result.songs[0];
+    const songId = song.id;
+    const artist = song.artists?.map(a => a.name).join(', ') || '未知';
+    const cover = song.album?.picUrl ? `${song.album.picUrl}?param=300y300` : null;
+
+    // 获取歌词
+    let lyrics = null;
+    try {
+      const lyricUrl = `https://music.163.com/api/song/lyric?id=${songId}&lv=1`;
+      const lyricResponse = await fetch(lyricUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://music.163.com/'
+        }
+      });
+      const lyricData = await lyricResponse.json();
+      if (lyricData.lrc?.lyric) {
+        lyrics = lyricData.lrc.lyric;
+      }
+    } catch (e) {
+      console.error('获取歌词失败:', e);
+    }
+
+    res.json({
+      success: true,
+      songId,
+      artist,
+      cover,
+      lyrics
+    });
+  } catch (error) {
+    console.error('获取音乐信息失败:', error);
+    res.json({ success: false, error: error.message });
+  }
+});
+
 // Serve index.html for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -1054,6 +1240,7 @@ app.listen(PORT, () => {
   ║   • 阿里云盘                                               ║
   ║   • 百度网盘                                               ║
   ║   • Alist (多网盘聚合)                                     ║
+  ║   • 夸克网盘                                               ║
   ║                                                           ║
   ╚═══════════════════════════════════════════════════════════╝
   `);
