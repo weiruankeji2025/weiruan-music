@@ -116,10 +116,11 @@
           <!-- Controls -->
           <div class="controls">
             <div class="control-group secondary">
-              <button class="btn-control" id="shuffleBtn" title="随机播放">
+              <button class="btn-control mode-btn" id="shuffleBtn" title="随机播放">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
                 </svg>
+                <span class="mode-label">随机</span>
               </button>
             </div>
 
@@ -145,15 +146,28 @@
             </div>
 
             <div class="control-group secondary">
-              <button class="btn-control" id="repeatBtn" title="重复播放">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button class="btn-control mode-btn" id="repeatBtn" title="循环模式">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="repeat-all">
                   <path d="M17 1l4 4-4 4"/>
                   <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
                   <path d="M7 23l-4-4 4-4"/>
                   <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
                 </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="repeat-one" style="display:none">
+                  <path d="M17 1l4 4-4 4"/>
+                  <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                  <path d="M7 23l-4-4 4-4"/>
+                  <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                  <text x="12" y="14" text-anchor="middle" font-size="8" fill="currentColor">1</text>
+                </svg>
+                <span class="mode-label" id="repeatLabel">顺序</span>
               </button>
             </div>
+          </div>
+
+          <!-- 播放模式指示器 -->
+          <div class="play-mode-indicator" id="playModeIndicator">
+            <span id="playModeText">顺序播放</span>
           </div>
 
           <!-- Volume Control -->
