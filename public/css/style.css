@@ -2064,3 +2064,60 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ===== Local Scan Styles ===== */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.scan-result {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-glass);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.scan-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.scan-progress {
+  height: 6px;
+  background: var(--bg-dark);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.scan-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--gradient-primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.scan-progress-bar.scanning {
+  animation: scanning 1.5s ease-in-out infinite;
+}
+
+@keyframes scanning {
+  0% { width: 0%; }
+  50% { width: 70%; }
+  100% { width: 100%; }
+}

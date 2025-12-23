@@ -1159,6 +1159,129 @@ app.post('/api/quark/disconnect', (req, res) => {
   res.json({ success: true });
 });
 
+// ==================== 本地扫描 API ====================
+
+// 递归扫描目录
+async function scanDirectory(dirPath, recursive = true) {
+  const results = [];
+
+  try {
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+
+      if (entry.isDirectory() && recursive) {
+        const subResults = await scanDirectory(fullPath, recursive);
+        results.push(...subResults);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (audioExtensions.includes(ext)) {
+          const stats = await fs.promises.stat(fullPath);
+          results.push({
+            id: `local-${Buffer.from(fullPath).toString('base64')}`,
+            name: entry.name,
+            path: `/api/local/stream?file=${encodeURIComponent(fullPath)}`,
+            fullPath: fullPath,
+            size: stats.size,
+            type: 'local'
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`扫描目录失败 ${dirPath}:`, error.message);
+  }
+
+  return results;
+}
+
+app.post('/api/local/scan', async (req, res) => {
+  try {
+    const { path: scanPath, recursive = true } = req.body;
+
+    if (!scanPath) {
+      return res.status(400).json({ success: false, error: '请提供扫描路径' });
+    }
+
+    // 检查路径是否存在
+    try {
+      await fs.promises.access(scanPath, fs.constants.R_OK);
+    } catch {
+      return res.status(400).json({ success: false, error: '路径不存在或无法访问' });
+    }
+
+    const stats = await fs.promises.stat(scanPath);
+    if (!stats.isDirectory()) {
+      return res.status(400).json({ success: false, error: '路径不是有效目录' });
+    }
+
+    const files = await scanDirectory(scanPath, recursive);
+
+    res.json({
+      success: true,
+      files: files,
+      count: files.length,
+      path: scanPath
+    });
+  } catch (error) {
+    console.error('扫描失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/local/stream', async (req, res) => {
+  try {
+    const { file: filePath } = req.query;
+
+    if (!filePath) {
+      return res.status(400).json({ success: false, error: '缺少文件路径' });
+    }
+
+    // 检查文件是否存在
+    try {
+      await fs.promises.access(filePath, fs.constants.R_OK);
+    } catch {
+      return res.status(404).json({ success: false, error: '文件不存在' });
+    }
+
+    const stats = await fs.promises.stat(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = audioMimeTypes[ext] || 'audio/mpeg';
+
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+      const chunkSize = (end - start) + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+      });
+
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': stats.size,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+      });
+
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
+    }
+  } catch (error) {
+    console.error('流式传输失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== 音乐信息API (封面/歌词) ====================
 
 app.get('/api/music/info', async (req, res) => {
