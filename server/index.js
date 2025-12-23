@@ -1284,6 +1284,89 @@ app.get('/api/local/stream', async (req, res) => {
 
 // ==================== 音乐信息API (封面/歌词) ====================
 
+// 清理歌曲名称的辅助函数
+function cleanSongName(name) {
+  return name
+    // 去除文件扩展名
+    .replace(/\.(mp3|flac|wav|ogg|m4a|aac|wma)$/i, '')
+    // 去除括号及其内容
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/【[^】]*】/g, '')
+    .replace(/「[^」]*」/g, '')
+    // 去除常见前缀后缀
+    .replace(/^(\d+\s*[-._]\s*)/g, '')  // 去除开头的数字编号
+    .replace(/\s*(feat\.|ft\.|featuring).*$/i, '')  // 去除 featuring
+    .replace(/\s*[-_]\s*(official|mv|music video|lyrics|lyric|audio|hd|hq|320k|flac).*$/i, '')
+    // 去除特殊字符
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// 网易云音乐搜索
+async function searchNetease(keyword) {
+  const searchUrl = 'https://music.163.com/api/search/get/web';
+  const searchParams = new URLSearchParams({
+    s: keyword,
+    type: '1',
+    limit: '10',
+    offset: '0'
+  });
+
+  const response = await fetch(searchUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://music.163.com/',
+      'Origin': 'https://music.163.com',
+      'Cookie': 'appver=2.0.2; NMTID=00O;'
+    },
+    body: searchParams.toString()
+  });
+
+  const data = await response.json();
+  return data.result?.songs || [];
+}
+
+// 获取网易云歌词
+async function getNeteaselyrics(songId) {
+  try {
+    const lyricUrl = `https://music.163.com/api/song/lyric?id=${songId}&lv=1&kv=1&tv=-1`;
+    const response = await fetch(lyricUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://music.163.com/',
+        'Cookie': 'appver=2.0.2'
+      }
+    });
+    const data = await response.json();
+    return data.lrc?.lyric || null;
+  } catch (e) {
+    console.error('获取网易云歌词失败:', e);
+    return null;
+  }
+}
+
+// QQ音乐搜索 (备选)
+async function searchQQMusic(keyword) {
+  try {
+    const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w=${encodeURIComponent(keyword)}&format=json&p=1&n=10`;
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://y.qq.com/'
+      }
+    });
+    const data = await response.json();
+    return data.data?.song?.list || [];
+  } catch (e) {
+    console.error('QQ音乐搜索失败:', e);
+    return [];
+  }
+}
+
 app.get('/api/music/info', async (req, res) => {
   try {
     const { name } = req.query;
@@ -1291,101 +1374,74 @@ app.get('/api/music/info', async (req, res) => {
       return res.json({ success: false, error: '缺少歌曲名称' });
     }
 
-    // 清理歌曲名称（去除括号内容、特殊字符等）
-    const cleanName = name
-      .replace(/\([^)]*\)/g, '')
-      .replace(/\[[^\]]*\]/g, '')
-      .replace(/[-_]/g, ' ')
-      .trim();
+    // 清理歌曲名称
+    const cleanName = cleanSongName(name);
+    console.log(`搜索音乐信息: "${name}" -> "${cleanName}"`);
 
-    // 搜索歌曲信息 (使用网易云音乐 API - POST 方法)
-    const searchUrl = 'https://music.163.com/api/search/get/web';
-    const searchParams = new URLSearchParams({
-      s: cleanName,
-      type: '1',
-      limit: '5',
-      offset: '0'
-    });
+    let songs = [];
+    let source = 'netease';
 
-    const searchResponse = await fetch(searchUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://music.163.com/',
-        'Origin': 'https://music.163.com',
-        'Cookie': 'appver=2.0.2'
-      },
-      body: searchParams.toString()
-    });
+    // 第一次尝试：网易云完整搜索
+    songs = await searchNetease(cleanName);
 
-    const searchData = await searchResponse.json();
-
-    if (!searchData.result?.songs?.[0]) {
-      // 尝试简化搜索词再搜索一次
+    // 第二次尝试：简化关键词搜索
+    if (songs.length === 0) {
       const simpleName = cleanName.split(' ')[0];
-      if (simpleName !== cleanName) {
-        const retryParams = new URLSearchParams({
-          s: simpleName,
-          type: '1',
-          limit: '3',
-          offset: '0'
-        });
-
-        const retryResponse = await fetch(searchUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://music.163.com/',
-            'Cookie': 'appver=2.0.2'
-          },
-          body: retryParams.toString()
-        });
-
-        const retryData = await retryResponse.json();
-        if (!retryData.result?.songs?.[0]) {
-          return res.json({ success: false, error: '未找到歌曲' });
-        }
-        searchData.result = retryData.result;
-      } else {
-        return res.json({ success: false, error: '未找到歌曲' });
+      if (simpleName.length >= 2) {
+        songs = await searchNetease(simpleName);
       }
     }
 
-    const song = searchData.result.songs[0];
-    const songId = song.id;
-    const artist = song.artists?.map(a => a.name).join(', ') || song.ar?.map(a => a.name).join(', ') || '未知';
+    // 第三次尝试：QQ音乐备选
+    if (songs.length === 0) {
+      const qqSongs = await searchQQMusic(cleanName);
+      if (qqSongs.length > 0) {
+        source = 'qq';
+        // 转换QQ音乐格式
+        songs = qqSongs.map(s => ({
+          id: s.songmid,
+          name: s.songname,
+          artists: s.singer,
+          album: {
+            name: s.albumname,
+            picUrl: s.albummid ? `https://y.qq.com/music/photo_new/T002R500x500M000${s.albummid}.jpg` : null
+          }
+        }));
+      }
+    }
 
-    // 获取封面（使用更高清的图片）
+    if (songs.length === 0) {
+      return res.json({ success: false, error: '未找到歌曲' });
+    }
+
+    const song = songs[0];
     let cover = null;
-    if (song.album?.picUrl || song.al?.picUrl) {
-      const picUrl = song.album?.picUrl || song.al?.picUrl;
-      cover = picUrl.replace('http://', 'https://') + '?param=500y500';
-    }
-
-    // 获取歌词
     let lyrics = null;
-    try {
-      const lyricUrl = `https://music.163.com/api/song/lyric?id=${songId}&lv=1&kv=1&tv=-1`;
-      const lyricResponse = await fetch(lyricUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://music.163.com/',
-          'Cookie': 'appver=2.0.2'
-        }
-      });
-      const lyricData = await lyricResponse.json();
-      if (lyricData.lrc?.lyric) {
-        lyrics = lyricData.lrc.lyric;
+    let artist = '未知';
+
+    if (source === 'netease') {
+      const songId = song.id;
+      artist = song.artists?.map(a => a.name).join(', ') || song.ar?.map(a => a.name).join(', ') || '未知';
+
+      // 获取封面
+      if (song.album?.picUrl || song.al?.picUrl) {
+        const picUrl = song.album?.picUrl || song.al?.picUrl;
+        cover = picUrl.replace('http://', 'https://') + '?param=500y500';
       }
-    } catch (e) {
-      console.error('获取歌词失败:', e);
+
+      // 获取歌词
+      lyrics = await getNeteaselyrics(songId);
+    } else if (source === 'qq') {
+      artist = song.artists?.map(a => a.name).join(', ') || '未知';
+      cover = song.album?.picUrl;
+      // QQ音乐歌词获取较复杂，暂不支持
     }
 
     res.json({
       success: true,
-      songId,
+      source,
+      songId: song.id,
+      songName: song.name,
       artist,
       cover,
       lyrics
@@ -1425,6 +1481,59 @@ app.get('/api/cover/proxy', async (req, res) => {
   } catch (error) {
     console.error('代理图片失败:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===== 歌单持久化存储（基于IP地址） =====
+const playlistDir = path.join(__dirname, '../playlists');
+if (!fs.existsSync(playlistDir)) {
+  fs.mkdirSync(playlistDir, { recursive: true });
+}
+
+// 获取客户端IP
+function getClientIP(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress;
+  // 清理IP地址中的特殊字符，用于文件名
+  return ip.replace(/[.:]/g, '_');
+}
+
+// 保存歌单
+app.post('/api/playlist/save', (req, res) => {
+  try {
+    const clientIP = getClientIP(req);
+    const { playlist } = req.body;
+
+    if (!playlist || !Array.isArray(playlist)) {
+      return res.json({ success: false, error: '无效的歌单数据' });
+    }
+
+    const filePath = path.join(playlistDir, `${clientIP}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(playlist, null, 2), 'utf8');
+
+    res.json({ success: true, message: '歌单已保存' });
+  } catch (error) {
+    console.error('保存歌单失败:', error);
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// 加载歌单
+app.get('/api/playlist/load', (req, res) => {
+  try {
+    const clientIP = getClientIP(req);
+    const filePath = path.join(playlistDir, `${clientIP}.json`);
+
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      const playlist = JSON.parse(data);
+      res.json({ success: true, playlist });
+    } else {
+      res.json({ success: true, playlist: [] });
+    }
+  } catch (error) {
+    console.error('加载歌单失败:', error);
+    res.json({ success: false, error: error.message, playlist: [] });
   }
 });
 

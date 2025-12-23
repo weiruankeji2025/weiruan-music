@@ -125,11 +125,6 @@ class MusicPlayer {
       this.settings = { ...this.settings, ...JSON.parse(saved) };
     }
 
-    const savedPlaylist = localStorage.getItem('weiruan-music-playlist');
-    if (savedPlaylist) {
-      this.playlist = JSON.parse(savedPlaylist);
-    }
-
     const savedVolume = localStorage.getItem('weiruan-music-volume');
     if (savedVolume) {
       this.volume = parseFloat(savedVolume);
@@ -139,13 +134,55 @@ class MusicPlayer {
     if (savedPlayCounts) {
       this.playCounts = JSON.parse(savedPlayCounts);
     }
+
+    // 从服务器加载歌单（基于IP地址）
+    this.loadPlaylistFromServer();
   }
 
   saveSettings() {
     localStorage.setItem('weiruan-music-settings', JSON.stringify(this.settings));
-    localStorage.setItem('weiruan-music-playlist', JSON.stringify(this.playlist));
     localStorage.setItem('weiruan-music-volume', this.volume.toString());
     localStorage.setItem('weiruan-music-playcounts', JSON.stringify(this.playCounts));
+  }
+
+  // 从服务器加载歌单
+  async loadPlaylistFromServer() {
+    try {
+      const response = await fetch('/api/playlist/load');
+      const result = await response.json();
+      if (result.success && result.playlist && result.playlist.length > 0) {
+        this.playlist = result.playlist;
+        this.updatePlaylistUI();
+        console.log(`已从服务器加载 ${result.playlist.length} 首歌曲`);
+      }
+    } catch (error) {
+      console.error('从服务器加载歌单失败:', error);
+      // 如果服务器加载失败，尝试从本地加载
+      const savedPlaylist = localStorage.getItem('weiruan-music-playlist');
+      if (savedPlaylist) {
+        this.playlist = JSON.parse(savedPlaylist);
+        this.updatePlaylistUI();
+      }
+    }
+  }
+
+  // 保存歌单到服务器
+  async savePlaylistToServer() {
+    try {
+      const response = await fetch('/api/playlist/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlist: this.playlist })
+      });
+      const result = await response.json();
+      if (result.success) {
+        console.log('歌单已保存到服务器');
+      }
+    } catch (error) {
+      console.error('保存歌单到服务器失败:', error);
+    }
+    // 同时保存到本地作为备份
+    localStorage.setItem('weiruan-music-playlist', JSON.stringify(this.playlist));
   }
 
   setupAudioElement() {
@@ -714,36 +751,76 @@ class MusicPlayer {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
-    // 立即显示上传中状态
-    this.showNotification(`正在上传 ${files.length} 个文件...`, 'info');
-
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
 
-    try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
+    // 显示进度条
+    const progressContainer = document.getElementById('uploadProgressContainer');
+    const progressText = document.getElementById('uploadProgressText');
+    const progressPercent = document.getElementById('uploadProgressPercent');
+    const progressFill = document.getElementById('uploadProgressFill');
+    const uploadBtn = document.getElementById('uploadBtn');
 
-      const result = await response.json();
-      if (result.success) {
-        result.files.forEach(file => {
-          if (!this.playlist.find(t => t.id === file.id)) {
-            this.playlist.push(file);
-          }
-        });
-        this.updatePlaylistUI();
-        this.saveSettings();
-        this.showNotification(`已添加 ${result.files.length} 首曲目`, 'success');
+    progressContainer.style.display = 'block';
+    uploadBtn.classList.add('uploading');
+    progressText.textContent = `正在上传 ${files.length} 个文件...`;
+    progressPercent.textContent = '0%';
+    progressFill.style.width = '0%';
 
-        // 自动切换到播放列表标签页
-        this.switchTab('playlist');
+    // 使用 XMLHttpRequest 支持进度监控
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        progressPercent.textContent = `${percent}%`;
+        progressFill.style.width = `${percent}%`;
+
+        if (percent === 100) {
+          progressText.textContent = '处理中，请稍候...';
+        }
       }
-    } catch (error) {
-      console.error('Upload error:', error);
-      this.showNotification('上传失败', 'error');
-    }
+    });
+
+    xhr.addEventListener('load', () => {
+      uploadBtn.classList.remove('uploading');
+
+      if (xhr.status === 200) {
+        try {
+          const result = JSON.parse(xhr.responseText);
+          if (result.success) {
+            result.files.forEach(file => {
+              if (!this.playlist.find(t => t.id === file.id)) {
+                this.playlist.push(file);
+              }
+            });
+            this.updatePlaylistUI();
+            this.savePlaylistToServer();
+            this.showNotification(`已添加 ${result.files.length} 首曲目`, 'success');
+            this.switchTab('playlist');
+          }
+        } catch (err) {
+          this.showNotification('上传失败：解析响应出错', 'error');
+        }
+      } else {
+        this.showNotification('上传失败', 'error');
+      }
+
+      // 隐藏进度条
+      setTimeout(() => {
+        progressContainer.style.display = 'none';
+        progressFill.style.width = '0%';
+      }, 1000);
+    });
+
+    xhr.addEventListener('error', () => {
+      uploadBtn.classList.remove('uploading');
+      progressContainer.style.display = 'none';
+      this.showNotification('上传失败：网络错误', 'error');
+    });
+
+    xhr.open('POST', '/api/upload');
+    xhr.send(formData);
 
     e.target.value = '';
   }
@@ -772,6 +849,7 @@ class MusicPlayer {
     this.audioElement.src = '';
     this.updatePlaylistUI();
     this.saveSettings();
+    this.savePlaylistToServer();
     document.getElementById('trackTitle').textContent = '未选择曲目';
     document.getElementById('trackArtist').textContent = '选择一首歌曲播放';
     this.showNotification('播放列表已清空', 'info');
@@ -788,6 +866,7 @@ class MusicPlayer {
     }
     this.updatePlaylistUI();
     this.saveSettings();
+    this.savePlaylistToServer();
   }
 
   loadPlaylist() {
@@ -2255,7 +2334,10 @@ class MusicPlayer {
           document.getElementById('localBrowser').style.display = 'block';
           document.getElementById('localPath').textContent = scanPath;
 
-          this.showNotification(`找到 ${result.count} 首音乐文件`, 'success');
+          // 自动添加所有扫描到的歌曲到歌单并永久保存
+          this.autoAddLocalTracks(result.files);
+
+          this.showNotification(`找到 ${result.count} 首音乐文件，已自动添加到歌单`, 'success');
         } else {
           this.showNotification('未找到音乐文件', 'info');
         }
@@ -2319,6 +2401,7 @@ class MusicPlayer {
       this.playlist.push(track);
       this.updatePlaylistUI();
       this.saveSettings();
+      this.savePlaylistToServer();
       this.showNotification(`已添加：${name}`, 'success');
     } else {
       this.showNotification(`已在列表中：${name}`, 'info');
@@ -2342,10 +2425,33 @@ class MusicPlayer {
     if (addedCount > 0) {
       this.updatePlaylistUI();
       this.saveSettings();
+      this.savePlaylistToServer();
       this.showNotification(`已添加 ${addedCount} 首音乐`, 'success');
       this.switchTab('playlist');
     } else {
       this.showNotification('所有音乐已在列表中', 'info');
+    }
+  }
+
+  // 扫描后自动添加歌曲到歌单并永久保存
+  autoAddLocalTracks(files) {
+    let addedCount = 0;
+    files.forEach(file => {
+      if (!this.playlist.find(t => t.id === file.id)) {
+        this.playlist.push({
+          id: file.id,
+          name: file.name,
+          path: file.path,
+          type: 'local'
+        });
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.savePlaylistToServer();
     }
   }
 
