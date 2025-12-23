@@ -1287,118 +1287,79 @@ app.get('/api/local/stream', async (req, res) => {
 // 清理歌曲名称的辅助函数
 function cleanSongName(name) {
   return name
-    // 去除文件扩展名
     .replace(/\.(mp3|flac|wav|ogg|m4a|aac|wma)$/i, '')
-    // 去除括号及其内容
     .replace(/\([^)]*\)/g, '')
     .replace(/\[[^\]]*\]/g, '')
     .replace(/【[^】]*】/g, '')
     .replace(/「[^」]*」/g, '')
-    // 去除常见前缀后缀
     .replace(/^(\d+\s*[-._]\s*)/g, '')
     .replace(/\s*(feat\.|ft\.|featuring).*$/i, '')
     .replace(/\s*[-_]\s*(official|mv|music video|lyrics|lyric|audio|hd|hq|320k|flac).*$/i, '')
-    // 去除特殊字符
     .replace(/[-_]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-// 酷狗音乐搜索 (主要来源)
-async function searchKugou(keyword) {
+// 网易云音乐搜索 - 使用移动端API
+async function searchNetease(keyword) {
   try {
-    const timestamp = Date.now();
-    const searchUrl = `https://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(keyword)}&page=1&pagesize=10&showtype=1`;
-    const response = await fetch(searchUrl, {
+    const url = `https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=10&offset=0`;
+    const response = await fetch(url, {
+      method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15',
-        'Accept': 'application/json'
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Pixel 3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+        'Referer': 'https://music.163.com/',
       }
     });
     const data = await response.json();
-    return data.data?.info || [];
+    console.log('网易云搜索结果:', data.result?.songCount || 0, '首');
+    return data.result?.songs || [];
   } catch (e) {
-    console.error('酷狗搜索失败:', e);
+    console.error('网易云搜索失败:', e.message);
     return [];
   }
 }
 
-// 获取酷狗歌曲详情（封面和歌词）
-async function getKugouSongInfo(hash, albumId) {
-  let cover = null;
-  let lyrics = null;
-
+// 获取网易云歌词
+async function getNeteaseLyrics(songId) {
   try {
-    // 获取歌曲详情和封面
-    const detailUrl = `https://wwwapi.kugou.com/yy/index.php?r=play/getdata&hash=${hash}&appid=1014&mid=1&platid=4`;
-    const detailResponse = await fetch(detailUrl, {
+    const url = `https://music.163.com/api/song/lyric?id=${songId}&lv=1&tv=-1`;
+    const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Cookie': 'kg_mid=1'
-      }
-    });
-    const detailData = await detailResponse.json();
-
-    if (detailData.data) {
-      cover = detailData.data.img;
-      lyrics = detailData.data.lyrics;
-    }
-  } catch (e) {
-    console.error('获取酷狗详情失败:', e);
-  }
-
-  // 如果没有获取到封面，尝试从专辑获取
-  if (!cover && albumId) {
-    try {
-      cover = `https://imge.kugou.com/stdmusic/150/${albumId}.jpg`;
-    } catch (e) {}
-  }
-
-  return { cover, lyrics };
-}
-
-// 酷我音乐搜索 (备用)
-async function searchKuwo(keyword) {
-  try {
-    const searchUrl = `https://www.kuwo.cn/api/www/search/searchMusicBykeyWord?key=${encodeURIComponent(keyword)}&pn=1&rn=10&httpsStatus=1`;
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://www.kuwo.cn/',
-        'Cookie': 'kw_token=ABCDEFG',
-        'csrf': 'ABCDEFG'
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+        'Referer': 'https://music.163.com/'
       }
     });
     const data = await response.json();
-    return data.data?.list || [];
+    return data.lrc?.lyric || null;
   } catch (e) {
-    console.error('酷我搜索失败:', e);
-    return [];
+    console.error('获取网易云歌词失败:', e.message);
+    return null;
   }
 }
 
-// 获取酷我歌词
-async function getKuwoLyrics(rid) {
+// 获取网易云歌曲详情（封面）
+async function getNeteaseSongDetail(songId) {
   try {
-    const lyricUrl = `https://m.kuwo.cn/newh5/singles/songinfoandlrc?musicId=${rid}`;
-    const response = await fetch(lyricUrl, {
+    const url = `https://music.163.com/api/song/detail?ids=[${songId}]`;
+    const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)'
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+        'Referer': 'https://music.163.com/'
       }
     });
     const data = await response.json();
-    if (data.data?.lrclist) {
-      // 转换为LRC格式
-      return data.data.lrclist.map(item => {
-        const time = parseFloat(item.time);
-        const min = Math.floor(time / 60).toString().padStart(2, '0');
-        const sec = (time % 60).toFixed(2).padStart(5, '0');
-        return `[${min}:${sec}]${item.lineLyric}`;
-      }).join('\n');
+    const song = data.songs?.[0];
+    if (song) {
+      return {
+        cover: song.album?.picUrl || song.al?.picUrl,
+        artist: song.artists?.map(a => a.name).join(', ') || song.ar?.map(a => a.name).join(', ')
+      };
     }
     return null;
   } catch (e) {
-    console.error('获取酷我歌词失败:', e);
+    console.error('获取网易云歌曲详情失败:', e.message);
     return null;
   }
 }
@@ -1417,62 +1378,43 @@ app.get('/api/music/info', async (req, res) => {
     let lyrics = null;
     let artist = '未知';
     let songName = cleanName;
-    let source = '';
 
-    // 策略1: 酷狗音乐搜索
-    const kugouSongs = await searchKugou(cleanName);
-    if (kugouSongs.length > 0) {
-      source = 'kugou';
-      const song = kugouSongs[0];
-      songName = song.songname || cleanName;
-      artist = song.singername || '未知';
+    // 搜索歌曲
+    let songs = await searchNetease(cleanName);
 
-      const info = await getKugouSongInfo(song.hash, song.album_id);
-      cover = info.cover;
-      lyrics = info.lyrics;
-    }
-
-    // 策略2: 如果酷狗没有歌词，尝试酷我
-    if (!lyrics) {
-      const kuwoSongs = await searchKuwo(cleanName);
-      if (kuwoSongs.length > 0) {
-        const song = kuwoSongs[0];
-        if (!artist || artist === '未知') {
-          artist = song.artist || '未知';
-        }
-        if (!songName) {
-          songName = song.name || cleanName;
-        }
-
-        // 获取酷我封面
-        if (!cover && song.pic) {
-          cover = song.pic.replace('/120/', '/500/');
-        }
-
-        // 获取酷我歌词
-        if (!lyrics && song.rid) {
-          lyrics = await getKuwoLyrics(song.rid);
-          if (lyrics) source = source || 'kuwo';
-        }
-      }
-    }
-
-    // 策略3: 简化关键词重试
-    if (!cover && !lyrics) {
+    // 如果没找到，尝试简化搜索词
+    if (songs.length === 0) {
       const simpleName = cleanName.split(' ')[0];
       if (simpleName.length >= 2 && simpleName !== cleanName) {
-        const retryKugou = await searchKugou(simpleName);
-        if (retryKugou.length > 0) {
-          source = 'kugou';
-          const song = retryKugou[0];
-          songName = song.songname || simpleName;
-          artist = song.singername || '未知';
+        console.log('简化搜索:', simpleName);
+        songs = await searchNetease(simpleName);
+      }
+    }
 
-          const info = await getKugouSongInfo(song.hash, song.album_id);
-          cover = info.cover;
-          lyrics = info.lyrics;
+    if (songs.length > 0) {
+      const song = songs[0];
+      const songId = song.id;
+      songName = song.name || cleanName;
+      artist = song.artists?.map(a => a.name).join(', ') || song.ar?.map(a => a.name).join(', ') || '未知';
+
+      // 获取封面
+      if (song.album?.picUrl || song.al?.picUrl) {
+        cover = (song.album?.picUrl || song.al?.picUrl).replace('http://', 'https://');
+      } else {
+        // 尝试获取详情
+        const detail = await getNeteaseSongDetail(songId);
+        if (detail?.cover) {
+          cover = detail.cover.replace('http://', 'https://');
+        }
+        if (detail?.artist) {
+          artist = detail.artist;
         }
       }
+
+      // 获取歌词
+      lyrics = await getNeteaseLyrics(songId);
+
+      console.log(`找到歌曲: ${songName} - ${artist}, 封面: ${cover ? '有' : '无'}, 歌词: ${lyrics ? '有' : '无'}`);
     }
 
     if (!cover && !lyrics) {
@@ -1481,7 +1423,6 @@ app.get('/api/music/info', async (req, res) => {
 
     res.json({
       success: true,
-      source,
       songName,
       artist,
       cover,
