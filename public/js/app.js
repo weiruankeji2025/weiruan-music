@@ -700,20 +700,13 @@ class MusicPlayer {
 
     // 重置封面为默认
     const albumArt = document.getElementById('albumArt');
-    albumArt.innerHTML = `
-      <div class="default-art">
-        <svg viewBox="0 0 100 100">
-          <defs><linearGradient id="discGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:#1a1a2e"/><stop offset="100%" style="stop-color:#16213e"/>
-          </linearGradient></defs>
-          <circle cx="50" cy="50" r="48" fill="url(#discGradient)" stroke="var(--primary)" stroke-width="1"/>
-          <circle cx="50" cy="50" r="35" fill="none" stroke="var(--primary)" stroke-width="0.5" opacity="0.5"/>
-          <circle cx="50" cy="50" r="25" fill="none" stroke="var(--secondary)" stroke-width="0.5" opacity="0.5"/>
-          <circle cx="50" cy="50" r="15" fill="none" stroke="var(--accent)" stroke-width="0.5" opacity="0.5"/>
-          <circle cx="50" cy="50" r="8" fill="#0f0f1a"/><circle cx="50" cy="50" r="3" fill="var(--primary)"/>
-        </svg>
-      </div>
-    `;
+    albumArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" class="default-cover">`;
+
+    // 重置mini播放器封面
+    const miniArt = document.getElementById('miniArt');
+    if (miniArt) {
+      miniArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+    }
   }
 
   // Playlist Management
@@ -2401,6 +2394,11 @@ class MusicPlayer {
           };
           img.onerror = () => {
             console.log('封面加载失败，使用默认封面');
+            // 封面加载失败时显示默认封面
+            albumArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" class="default-cover">`;
+            if (miniArt) {
+              miniArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+            }
           };
           img.src = proxyUrl;
         }
@@ -2425,6 +2423,13 @@ class MusicPlayer {
     } catch (error) {
       console.error('获取音乐信息失败:', error);
       document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
+      // 确保显示默认封面
+      const albumArt = document.getElementById('albumArt');
+      const miniArt = document.getElementById('miniArt');
+      albumArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" class="default-cover">`;
+      if (miniArt) {
+        miniArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+      }
     }
   }
 
