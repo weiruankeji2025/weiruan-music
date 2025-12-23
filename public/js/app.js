@@ -349,6 +349,11 @@ class MusicPlayer {
     // 歌词切换
     document.getElementById('lyricsToggle')?.addEventListener('click', () => this.toggleLyrics());
 
+    // 本地扫描
+    document.getElementById('localScanForm')?.addEventListener('submit', (e) => this.scanLocalDirectory(e));
+    document.getElementById('localRescan')?.addEventListener('click', () => this.rescanLocalDirectory());
+    document.getElementById('localBackBtn')?.addEventListener('click', () => this.showLocalConfig());
+
     // 设置重定向URI
     const baseUrl = `${window.location.protocol}//${window.location.host}`;
     document.getElementById('gdriveRedirectUri').textContent = `${baseUrl}/api/gdrive/callback`;
@@ -1301,7 +1306,7 @@ class MusicPlayer {
     });
 
     // 隐藏所有云存储区域
-    const sections = ['webdav', 'gdrive', 'onedrive', 'dropbox', 'aliyun', 'baidu', 'alist', 'quark'];
+    const sections = ['local', 'webdav', 'gdrive', 'onedrive', 'dropbox', 'aliyun', 'baidu', 'alist', 'quark'];
     sections.forEach(section => {
       const el = document.getElementById(`${section}-section`);
       if (el) el.style.display = section === type ? 'block' : 'none';
@@ -2211,6 +2216,159 @@ class MusicPlayer {
     document.getElementById('quarkConfig').style.display = 'block';
     document.getElementById('quarkBrowser').style.display = 'none';
     this.showNotification('已断开夸克网盘连接', 'info');
+  }
+
+  // ==================== 本地扫描 ====================
+  async scanLocalDirectory(e) {
+    e.preventDefault();
+    const scanPath = document.getElementById('localScanPath').value;
+    const recursive = document.getElementById('localScanRecursive').checked;
+
+    // 显示扫描进度
+    const scanResult = document.getElementById('scanResult');
+    const scanStatus = document.getElementById('scanStatus');
+    const scanCount = document.getElementById('scanCount');
+    const scanProgressBar = document.getElementById('scanProgressBar');
+
+    scanResult.style.display = 'block';
+    scanStatus.textContent = '正在扫描...';
+    scanCount.textContent = '0 首';
+    scanProgressBar.classList.add('scanning');
+    scanProgressBar.style.width = '0%';
+
+    // 保存扫描路径
+    this.lastScanPath = scanPath;
+    this.lastScanRecursive = recursive;
+
+    try {
+      const response = await fetch('/api/local/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: scanPath, recursive })
+      });
+
+      const result = await response.json();
+      scanProgressBar.classList.remove('scanning');
+
+      if (result.success) {
+        scanStatus.textContent = '扫描完成';
+        scanCount.textContent = `${result.count} 首`;
+        scanProgressBar.style.width = '100%';
+
+        if (result.files.length > 0) {
+          // 显示文件列表
+          this.renderLocalFileList(result.files);
+          document.getElementById('localConfig').style.display = 'none';
+          document.getElementById('localBrowser').style.display = 'block';
+          document.getElementById('localPath').textContent = scanPath;
+
+          this.showNotification(`找到 ${result.count} 首音乐文件`, 'success');
+        } else {
+          this.showNotification('未找到音乐文件', 'info');
+        }
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      scanProgressBar.classList.remove('scanning');
+      scanStatus.textContent = '扫描失败';
+      scanProgressBar.style.width = '0%';
+      this.showNotification(`扫描失败：${error.message}`, 'error');
+    }
+  }
+
+  renderLocalFileList(files) {
+    const container = document.getElementById('localFileList');
+
+    container.innerHTML = files.map(file => `
+      <div class="file-item" data-id="${file.id}" data-path="${file.path}" data-name="${file.name}">
+        <div class="file-icon audio">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+          </svg>
+        </div>
+        <span class="file-name">${file.name}</span>
+        <span class="file-size">${this.formatFileSize(file.size)}</span>
+      </div>
+    `).join('') || '<div class="empty-folder" style="padding: 2rem; text-align: center;">未找到音乐文件</div>';
+
+    // 添加点击事件
+    container.querySelectorAll('.file-item').forEach(el => {
+      el.addEventListener('click', () => {
+        this.addLocalTrack(el.dataset.id, el.dataset.path, el.dataset.name);
+      });
+    });
+
+    // 添加全部添加按钮
+    if (files.length > 0) {
+      const addAllBtn = document.createElement('div');
+      addAllBtn.className = 'add-all-btn';
+      addAllBtn.innerHTML = `
+        <button class="btn-primary full-width" id="addAllLocalBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span>添加全部 (${files.length} 首)</span>
+        </button>
+      `;
+      addAllBtn.style.cssText = 'padding: 1rem; border-top: 1px solid var(--border-color);';
+      container.appendChild(addAllBtn);
+
+      document.getElementById('addAllLocalBtn')?.addEventListener('click', () => {
+        this.addAllLocalTracks(files);
+      });
+    }
+  }
+
+  addLocalTrack(id, path, name) {
+    const track = { id, name, path, type: 'local' };
+    if (!this.playlist.find(t => t.id === track.id)) {
+      this.playlist.push(track);
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加：${name}`, 'success');
+    } else {
+      this.showNotification(`已在列表中：${name}`, 'info');
+    }
+  }
+
+  addAllLocalTracks(files) {
+    let addedCount = 0;
+    files.forEach(file => {
+      if (!this.playlist.find(t => t.id === file.id)) {
+        this.playlist.push({
+          id: file.id,
+          name: file.name,
+          path: file.path,
+          type: 'local'
+        });
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      this.updatePlaylistUI();
+      this.saveSettings();
+      this.showNotification(`已添加 ${addedCount} 首音乐`, 'success');
+      this.switchTab('playlist');
+    } else {
+      this.showNotification('所有音乐已在列表中', 'info');
+    }
+  }
+
+  rescanLocalDirectory() {
+    if (this.lastScanPath) {
+      document.getElementById('localScanPath').value = this.lastScanPath;
+      document.getElementById('localScanRecursive').checked = this.lastScanRecursive;
+      this.showLocalConfig();
+      // 自动开始扫描
+      document.getElementById('localScanForm').dispatchEvent(new Event('submit'));
+    }
+  }
+
+  showLocalConfig() {
+    document.getElementById('localConfig').style.display = 'block';
+    document.getElementById('localBrowser').style.display = 'none';
   }
 
   // ==================== 封面和歌词 ====================
