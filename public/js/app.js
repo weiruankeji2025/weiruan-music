@@ -189,6 +189,7 @@ class MusicPlayer {
     this.audioElement.crossOrigin = 'anonymous';
     this.audioElement.preload = 'auto';
     this.audioElement.volume = this.volume;
+    this.pendingPlay = false;
 
     this.audioElement.addEventListener('loadedmetadata', () => this.onMetadataLoaded());
     this.audioElement.addEventListener('timeupdate', () => this.onTimeUpdate());
@@ -196,6 +197,18 @@ class MusicPlayer {
     this.audioElement.addEventListener('play', () => this.onPlay());
     this.audioElement.addEventListener('pause', () => this.onPause());
     this.audioElement.addEventListener('error', (e) => this.onError(e));
+
+    // 优化播放延迟：数据可播放时立即开始
+    this.audioElement.addEventListener('canplay', () => {
+      if (this.pendingPlay) {
+        this.audioElement.play().catch(() => {});
+        this.pendingPlay = false;
+      }
+    });
+
+    // 预加载下一首的音频元素
+    this.preloadAudio = new Audio();
+    this.preloadAudio.preload = 'auto';
   }
 
   initAudioContext() {
@@ -511,8 +524,14 @@ class MusicPlayer {
     this.playCounts[track.id] = (this.playCounts[track.id] || 0) + 1;
     this.saveSettings();
 
+    // 优化播放：先设置src，等canplay事件再播放
+    this.pendingPlay = true;
     this.audioElement.src = track.path;
-    this.audioElement.play();
+
+    // 尝试立即播放，如果失败会在canplay事件中重试
+    this.audioElement.play().catch(() => {
+      // 播放失败，等待canplay事件
+    });
 
     this.updateTrackInfo(track);
     this.updatePlaylistUI();
@@ -520,8 +539,29 @@ class MusicPlayer {
     // 获取封面和歌词
     this.fetchCoverAndLyrics(track);
 
+    // 预加载下一首歌曲
+    this.preloadNextTrack();
+
     if (this.settings.notifications) {
       this.showNotification(`正在播放：${track.name}`, 'info');
+    }
+  }
+
+  // 预加载下一首歌曲
+  preloadNextTrack() {
+    if (this.playlist.length <= 1) return;
+
+    let nextIndex;
+    if (this.isShuffle) {
+      // 随机模式下不预加载
+      return;
+    } else {
+      nextIndex = (this.currentIndex + 1) % this.playlist.length;
+    }
+
+    const nextTrack = this.playlist[nextIndex];
+    if (nextTrack && this.preloadAudio) {
+      this.preloadAudio.src = nextTrack.path;
     }
   }
 
@@ -558,6 +598,7 @@ class MusicPlayer {
   toggleShuffle() {
     this.isShuffle = !this.isShuffle;
     document.getElementById('shuffleBtn').classList.toggle('active', this.isShuffle);
+    this.updatePlayModeIndicator();
     this.showNotification(`随机播放：${this.isShuffle ? '开启' : '关闭'}`, 'info');
   }
 
@@ -567,31 +608,49 @@ class MusicPlayer {
     this.repeatMode = modes[(currentModeIndex + 1) % modes.length];
 
     const btn = document.getElementById('repeatBtn');
+    const repeatLabel = document.getElementById('repeatLabel');
     btn.classList.toggle('active', this.repeatMode !== 'none');
 
+    // 更新按钮图标和标签
+    const repeatAll = btn.querySelector('.repeat-all');
+    const repeatOne = btn.querySelector('.repeat-one');
+
     if (this.repeatMode === 'one') {
-      btn.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 1l4 4-4 4"/>
-          <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-          <path d="M7 23l-4-4 4-4"/>
-          <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-          <text x="12" y="14" font-size="8" fill="currentColor" text-anchor="middle">1</text>
-        </svg>
-      `;
+      if (repeatAll) repeatAll.style.display = 'none';
+      if (repeatOne) repeatOne.style.display = 'block';
+      if (repeatLabel) repeatLabel.textContent = '单曲';
+    } else if (this.repeatMode === 'all') {
+      if (repeatAll) repeatAll.style.display = 'block';
+      if (repeatOne) repeatOne.style.display = 'none';
+      if (repeatLabel) repeatLabel.textContent = '循环';
     } else {
-      btn.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 1l4 4-4 4"/>
-          <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-          <path d="M7 23l-4-4 4-4"/>
-          <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-        </svg>
-      `;
+      if (repeatAll) repeatAll.style.display = 'block';
+      if (repeatOne) repeatOne.style.display = 'none';
+      if (repeatLabel) repeatLabel.textContent = '顺序';
     }
 
-    const modeNames = { none: '关闭', all: '全部循环', one: '单曲循环' };
-    this.showNotification(`重复模式：${modeNames[this.repeatMode]}`, 'info');
+    this.updatePlayModeIndicator();
+
+    const modeNames = { none: '顺序播放', all: '列表循环', one: '单曲循环' };
+    this.showNotification(`播放模式：${modeNames[this.repeatMode]}`, 'info');
+  }
+
+  // 更新播放模式指示器
+  updatePlayModeIndicator() {
+    const indicator = document.getElementById('playModeText');
+    if (!indicator) return;
+
+    let modeText = '';
+    if (this.isShuffle) {
+      modeText = '随机播放';
+    } else if (this.repeatMode === 'one') {
+      modeText = '单曲循环';
+    } else if (this.repeatMode === 'all') {
+      modeText = '列表循环';
+    } else {
+      modeText = '顺序播放';
+    }
+    indicator.textContent = modeText;
   }
 
   seek(seconds) {
