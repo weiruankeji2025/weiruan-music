@@ -2384,16 +2384,25 @@ class MusicPlayer {
       const result = await response.json();
 
       if (result.success) {
-        // 更新封面
+        // 更新封面（使用代理解决跨域）
         if (result.cover) {
+          const proxyUrl = `/api/cover/proxy?url=${encodeURIComponent(result.cover)}`;
           const albumArt = document.getElementById('albumArt');
           const miniArt = document.getElementById('miniArt');
-          albumArt.innerHTML = `<img src="${result.cover}" alt="Album Art">`;
-          miniArt.innerHTML = `<img src="${result.cover}" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
 
-          // 更新播放列表中的封面
-          track.cover = result.cover;
-          this.updatePlaylistUI();
+          // 创建图片元素并添加错误处理
+          const img = new Image();
+          img.onload = () => {
+            albumArt.innerHTML = `<img src="${proxyUrl}" alt="Album Art">`;
+            miniArt.innerHTML = `<img src="${proxyUrl}" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+            // 更新播放列表中的封面
+            track.cover = proxyUrl;
+            this.updatePlaylistUI();
+          };
+          img.onerror = () => {
+            console.log('封面加载失败，使用默认封面');
+          };
+          img.src = proxyUrl;
         }
 
         // 更新歌词

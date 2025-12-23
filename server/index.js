@@ -1291,33 +1291,88 @@ app.get('/api/music/info', async (req, res) => {
       return res.json({ success: false, error: '缺少歌曲名称' });
     }
 
-    // 搜索歌曲信息 (使用网易云音乐 API)
-    const searchUrl = `https://music.163.com/api/search/get?s=${encodeURIComponent(name)}&type=1&limit=1`;
+    // 清理歌曲名称（去除括号内容、特殊字符等）
+    const cleanName = name
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\[[^\]]*\]/g, '')
+      .replace(/[-_]/g, ' ')
+      .trim();
+
+    // 搜索歌曲信息 (使用网易云音乐 API - POST 方法)
+    const searchUrl = 'https://music.163.com/api/search/get/web';
+    const searchParams = new URLSearchParams({
+      s: cleanName,
+      type: '1',
+      limit: '5',
+      offset: '0'
+    });
+
     const searchResponse = await fetch(searchUrl, {
+      method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://music.163.com/'
-      }
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://music.163.com/',
+        'Origin': 'https://music.163.com',
+        'Cookie': 'appver=2.0.2'
+      },
+      body: searchParams.toString()
     });
 
     const searchData = await searchResponse.json();
+
     if (!searchData.result?.songs?.[0]) {
-      return res.json({ success: false, error: '未找到歌曲' });
+      // 尝试简化搜索词再搜索一次
+      const simpleName = cleanName.split(' ')[0];
+      if (simpleName !== cleanName) {
+        const retryParams = new URLSearchParams({
+          s: simpleName,
+          type: '1',
+          limit: '3',
+          offset: '0'
+        });
+
+        const retryResponse = await fetch(searchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://music.163.com/',
+            'Cookie': 'appver=2.0.2'
+          },
+          body: retryParams.toString()
+        });
+
+        const retryData = await retryResponse.json();
+        if (!retryData.result?.songs?.[0]) {
+          return res.json({ success: false, error: '未找到歌曲' });
+        }
+        searchData.result = retryData.result;
+      } else {
+        return res.json({ success: false, error: '未找到歌曲' });
+      }
     }
 
     const song = searchData.result.songs[0];
     const songId = song.id;
-    const artist = song.artists?.map(a => a.name).join(', ') || '未知';
-    const cover = song.album?.picUrl ? `${song.album.picUrl}?param=300y300` : null;
+    const artist = song.artists?.map(a => a.name).join(', ') || song.ar?.map(a => a.name).join(', ') || '未知';
+
+    // 获取封面（使用更高清的图片）
+    let cover = null;
+    if (song.album?.picUrl || song.al?.picUrl) {
+      const picUrl = song.album?.picUrl || song.al?.picUrl;
+      cover = picUrl.replace('http://', 'https://') + '?param=500y500';
+    }
 
     // 获取歌词
     let lyrics = null;
     try {
-      const lyricUrl = `https://music.163.com/api/song/lyric?id=${songId}&lv=1`;
+      const lyricUrl = `https://music.163.com/api/song/lyric?id=${songId}&lv=1&kv=1&tv=-1`;
       const lyricResponse = await fetch(lyricUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://music.163.com/'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://music.163.com/',
+          'Cookie': 'appver=2.0.2'
         }
       });
       const lyricData = await lyricResponse.json();
@@ -1338,6 +1393,38 @@ app.get('/api/music/info', async (req, res) => {
   } catch (error) {
     console.error('获取音乐信息失败:', error);
     res.json({ success: false, error: error.message });
+  }
+});
+
+// 封面图片代理（解决跨域问题）
+app.get('/api/cover/proxy', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).json({ success: false, error: '缺少图片URL' });
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://music.163.com/'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ success: false, error: '获取图片失败' });
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 缓存1天
+
+    const nodeStream = require('stream');
+    const readableStream = nodeStream.Readable.fromWeb(response.body);
+    readableStream.pipe(res);
+  } catch (error) {
+    console.error('代理图片失败:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
