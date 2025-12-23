@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" fill="#1a1a2e"/>
+  <g transform="translate(30, 60)">
+    <!-- W -->
+    <path d="M10 10 L20 50 L30 30 L40 50 L50 10" stroke="#3b82f6" stroke-width="4" fill="none"/>
+    <!-- R with music note -->
+    <path d="M60 10 L60 50 M60 10 L75 10 Q85 10 85 20 Q85 30 75 30 L60 30 M75 30 L85 50" stroke="#3b82f6" stroke-width="4" fill="none"/>
+    <!-- Music note -->
+    <circle cx="95" cy="45" r="8" fill="#3b82f6"/>
+    <path d="M103 45 L103 15 L115 20 L115 25" stroke="#3b82f6" stroke-width="3" fill="none"/>
+  </g>
+  <text x="100" y="110" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="bold">威软音乐</text>
+  <text x="100" y="130" text-anchor="middle" fill="#6b7280" font-family="Arial, sans-serif" font-size="10">WeiRuan Music</text>
+</svg>
