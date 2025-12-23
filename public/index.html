@@ -184,7 +184,7 @@
           <div class="playlist-header">
             <h2>播放列表</h2>
             <div class="playlist-actions">
-              <label class="btn-primary upload-btn">
+              <label class="btn-primary upload-btn" id="uploadBtn">
                 <input type="file" id="fileInput" multiple accept="audio/*" hidden>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -200,6 +200,16 @@
                 </svg>
                 <span>清空列表</span>
               </button>
+            </div>
+          </div>
+          <!-- 上传进度条 -->
+          <div class="upload-progress-container" id="uploadProgressContainer" style="display: none;">
+            <div class="upload-progress-info">
+              <span id="uploadProgressText">正在上传...</span>
+              <span id="uploadProgressPercent">0%</span>
+            </div>
+            <div class="upload-progress-bar">
+              <div class="upload-progress-fill" id="uploadProgressFill"></div>
             </div>
           </div>
           <div class="playlist-stats">
