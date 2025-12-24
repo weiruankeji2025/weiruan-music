@@ -1594,31 +1594,41 @@ function scanMusicLibrary(dir, baseDir = dir) {
     return results;
   }
 
-  const items = fs.readdirSync(dir);
+  try {
+    const items = fs.readdirSync(dir);
 
-  for (const item of items) {
-    const fullPath = path.join(dir, item);
-    const stat = fs.statSync(fullPath);
+    for (const item of items) {
+      try {
+        const fullPath = path.join(dir, item);
+        const stat = fs.statSync(fullPath);
 
-    if (stat.isDirectory()) {
-      // 递归扫描子目录
-      results.push(...scanMusicLibrary(fullPath, baseDir));
-    } else {
-      // 检查是否是音乐文件
-      const ext = path.extname(item).toLowerCase();
-      if (audioExtensions.includes(ext)) {
-        const relativePath = path.relative(baseDir, fullPath);
-        results.push({
-          id: `library:${relativePath}`,
-          name: item,
-          path: `/api/library/stream/${encodeURIComponent(relativePath)}`,
-          size: stat.size,
-          type: 'library',
-          folder: path.dirname(relativePath) === '.' ? '' : path.dirname(relativePath),
-          mtime: stat.mtime.getTime()
-        });
+        if (stat.isDirectory()) {
+          // 递归扫描子目录
+          results.push(...scanMusicLibrary(fullPath, baseDir));
+        } else {
+          // 检查是否是音乐文件
+          const ext = path.extname(item).toLowerCase();
+          if (audioExtensions.includes(ext)) {
+            const relativePath = path.relative(baseDir, fullPath);
+            // 对路径的每个部分分别编码，保留目录分隔符
+            const encodedPath = relativePath.split(path.sep).map(p => encodeURIComponent(p)).join('/');
+            results.push({
+              id: `library:${relativePath}`,
+              name: item,
+              path: `/api/library/stream/${encodedPath}`,
+              size: stat.size,
+              type: 'library',
+              folder: path.dirname(relativePath) === '.' ? '' : path.dirname(relativePath),
+              mtime: stat.mtime.getTime()
+            });
+          }
+        }
+      } catch (fileError) {
+        console.error(`扫描文件失败: ${item}`, fileError.message);
       }
     }
+  } catch (dirError) {
+    console.error(`扫描目录失败: ${dir}`, dirError.message);
   }
 
   return results;
@@ -1645,17 +1655,26 @@ app.get('/api/library/list', (req, res) => {
 // 流式播放音乐库文件
 app.get('/api/library/stream/:filepath(*)', (req, res) => {
   try {
-    const filepath = decodeURIComponent(req.params.filepath);
+    // 解码路径（处理中文和特殊字符）
+    let filepath;
+    try {
+      filepath = decodeURIComponent(req.params.filepath);
+    } catch (e) {
+      filepath = req.params.filepath;
+    }
+
     const fullPath = path.join(libraryDir, filepath);
 
     // 安全检查：确保路径在音乐库目录内
     const normalizedPath = path.normalize(fullPath);
     if (!normalizedPath.startsWith(path.normalize(libraryDir))) {
+      console.error(`安全检查失败: ${filepath}`);
       return res.status(403).json({ error: 'Access denied' });
     }
 
     if (!fs.existsSync(fullPath)) {
-      return res.status(404).json({ error: 'File not found' });
+      console.error(`文件不存在: ${fullPath}`);
+      return res.status(404).json({ error: 'File not found', path: filepath });
     }
 
     const stat = fs.statSync(fullPath);
@@ -1664,6 +1683,12 @@ app.get('/api/library/stream/:filepath(*)', (req, res) => {
     const ext = path.extname(fullPath).toLowerCase();
     const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
+    // 设置CORS头
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Range');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
@@ -1671,6 +1696,14 @@ app.get('/api/library/stream/:filepath(*)', (req, res) => {
       const chunkSize = end - start + 1;
 
       const stream = fs.createReadStream(fullPath, { start, end });
+
+      stream.on('error', (err) => {
+        console.error(`流读取错误: ${filepath}`, err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Stream error' });
+        }
+      });
+
       res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
@@ -1679,12 +1712,21 @@ app.get('/api/library/stream/:filepath(*)', (req, res) => {
       });
       stream.pipe(res);
     } else {
+      const stream = fs.createReadStream(fullPath);
+
+      stream.on('error', (err) => {
+        console.error(`流读取错误: ${filepath}`, err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Stream error' });
+        }
+      });
+
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': contentType,
         'Accept-Ranges': 'bytes'
       });
-      fs.createReadStream(fullPath).pipe(res);
+      stream.pipe(res);
     }
   } catch (error) {
     console.error('流式播放失败:', error);
