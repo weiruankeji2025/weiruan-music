@@ -784,8 +784,28 @@ class MusicPlayer {
   }
 
   onError(e) {
-    console.error('Audio error:', e);
-    this.showNotification('播放出错', 'error');
+    const track = this.playlist[this.currentIndex];
+    const errorCode = this.audioElement.error?.code || 'unknown';
+    const errorMessages = {
+      1: '用户中止',
+      2: '网络错误',
+      3: '解码错误',
+      4: '不支持的格式'
+    };
+    const errorMsg = errorMessages[errorCode] || '未知错误';
+
+    console.error(`播放错误 [${errorCode}]: ${errorMsg}`, track?.name);
+
+    // 显示错误通知
+    this.showNotification(`播放出错: ${errorMsg} - ${track?.name || '未知'}`, 'error');
+
+    // 3秒后自动跳到下一首
+    if (this.playlist.length > 1) {
+      setTimeout(() => {
+        console.log('自动跳到下一首...');
+        this.playNext();
+      }, 2000);
+    }
   }
 
   updatePlayButtons(playing) {
