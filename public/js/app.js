@@ -2530,40 +2530,74 @@ class MusicPlayer {
   }
 
   // ==================== 封面和歌词 ====================
+  setDefaultCover(albumArt, miniArt) {
+    const defaultCover = '/img/default-cover.svg';
+    if (albumArt) {
+      albumArt.innerHTML = `<img src="${defaultCover}" alt="Album Art" class="default-cover">`;
+    }
+    if (miniArt) {
+      miniArt.innerHTML = `<img src="${defaultCover}" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+    }
+  }
+
   async fetchCoverAndLyrics(track) {
     const trackName = track.name.replace(/\.[^/.]+$/, '');
+    const albumArt = document.getElementById('albumArt');
+    const miniArt = document.getElementById('miniArt');
 
     // 清空当前歌词
     this.currentLyrics = null;
     document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">正在获取歌词...</p>';
 
+    let coverLoaded = false;
+
+    // 首先尝试读取内嵌封面（仅对本地上传的文件）
+    if (track.type === 'local' && track.id) {
+      try {
+        const embeddedUrl = `/api/cover/embedded/${encodeURIComponent(track.id)}`;
+        const img = new Image();
+
+        await new Promise((resolve, reject) => {
+          img.onload = () => {
+            albumArt.innerHTML = `<img src="${embeddedUrl}" alt="Album Art">`;
+            if (miniArt) {
+              miniArt.innerHTML = `<img src="${embeddedUrl}" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+            }
+            track.cover = embeddedUrl;
+            coverLoaded = true;
+            console.log('使用内嵌封面');
+            resolve();
+          };
+          img.onerror = () => reject();
+          img.src = embeddedUrl;
+        });
+      } catch (e) {
+        // 没有内嵌封面，继续尝试网络获取
+      }
+    }
+
+    // 从网络获取封面和歌词
     try {
       const response = await fetch(`/api/music/info?name=${encodeURIComponent(trackName)}`);
       const result = await response.json();
 
       if (result.success) {
-        // 更新封面（使用代理解决跨域）
-        if (result.cover) {
+        // 如果没有内嵌封面，使用网络封面
+        if (!coverLoaded && result.cover) {
           const proxyUrl = `/api/cover/proxy?url=${encodeURIComponent(result.cover)}`;
-          const albumArt = document.getElementById('albumArt');
-          const miniArt = document.getElementById('miniArt');
 
-          // 创建图片元素并添加错误处理
           const img = new Image();
           img.onload = () => {
             albumArt.innerHTML = `<img src="${proxyUrl}" alt="Album Art">`;
-            miniArt.innerHTML = `<img src="${proxyUrl}" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
-            // 更新播放列表中的封面
+            if (miniArt) {
+              miniArt.innerHTML = `<img src="${proxyUrl}" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+            }
             track.cover = proxyUrl;
             this.updatePlaylistUI();
           };
           img.onerror = () => {
-            console.log('封面加载失败，使用默认封面');
-            // 封面加载失败时显示默认封面
-            albumArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" class="default-cover">`;
-            if (miniArt) {
-              miniArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
-            }
+            console.log('网络封面加载失败，使用默认封面');
+            this.setDefaultCover(albumArt, miniArt);
           };
           img.src = proxyUrl;
         }

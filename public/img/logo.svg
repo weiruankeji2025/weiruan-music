@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Red background circle -->
+  <circle cx="100" cy="100" r="100" fill="#e60012"/>
+
+  <!-- Ice cream cone -->
+  <g transform="translate(35, 45)">
+    <!-- Cone -->
+    <polygon points="25,70 45,70 35,110" fill="#d4a853" stroke="#8b6914" stroke-width="2"/>
+    <!-- Cone pattern -->
+    <line x1="28" y1="75" x2="35" y2="105" stroke="#8b6914" stroke-width="1"/>
+    <line x1="42" y1="75" x2="35" y2="105" stroke="#8b6914" stroke-width="1"/>
+    <line x1="26" y1="80" x2="44" y2="80" stroke="#8b6914" stroke-width="1"/>
+    <line x1="28" y1="90" x2="42" y2="90" stroke="#8b6914" stroke-width="1"/>
+    <!-- Ice cream swirl -->
+    <ellipse cx="35" cy="55" rx="18" ry="20" fill="white" stroke="#333" stroke-width="2"/>
+    <ellipse cx="35" cy="40" rx="12" ry="14" fill="white" stroke="#333" stroke-width="2"/>
+    <ellipse cx="35" cy="28" rx="8" ry="10" fill="white" stroke="#333" stroke-width="2"/>
+  </g>
+
+  <!-- Snowman body -->
+  <ellipse cx="115" cy="135" rx="45" ry="40" fill="white" stroke="#333" stroke-width="3"/>
+
+  <!-- Snowman head -->
+  <circle cx="115" cy="80" r="35" fill="white" stroke="#333" stroke-width="3"/>
+
+  <!-- Crown -->
+  <g transform="translate(100, 30)">
+    <path d="M0,25 L5,10 L15,20 L15,5 L30,20 L30,10 L35,25 Z" fill="#ffc107" stroke="#333" stroke-width="2"/>
+  </g>
+
+  <!-- Left eye -->
+  <ellipse cx="100" cy="75" rx="6" ry="8" fill="#1a237e"/>
+
+  <!-- Right eye -->
+  <ellipse cx="130" cy="75" rx="6" ry="8" fill="#1a237e"/>
+
+  <!-- Nose (orange carrot) -->
+  <ellipse cx="115" cy="88" rx="6" ry="5" fill="#ff9800"/>
+
+  <!-- Smile -->
+  <path d="M100,100 Q115,115 130,100" fill="none" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Tongue -->
+  <ellipse cx="115" cy="108" rx="5" ry="6" fill="#e60012"/>
+
+  <!-- Arms/body outline -->
+  <path d="M75,120 Q70,130 75,145" fill="none" stroke="#333" stroke-width="3"/>
+  <path d="M155,120 Q160,130 155,145" fill="none" stroke="#333" stroke-width="3"/>
+</svg>
