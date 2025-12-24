@@ -1551,11 +1551,19 @@ body {
 
 .mini-progress {
   flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.mini-progress-bar {
+  width: 100%;
   height: 4px;
   background: var(--bg-glass);
   border-radius: 2px;
-  cursor: pointer;
   overflow: hidden;
+  position: relative;
 }
 
 .mini-progress-fill {
@@ -1563,6 +1571,7 @@ body {
   background: var(--gradient-primary);
   width: 0%;
   transition: width 0.1s linear;
+  pointer-events: none;
 }
 
 /* ===== Modal ===== */
