@@ -238,12 +238,21 @@ body {
 .logo-icon {
   width: 45px;
   height: 45px;
+  border-radius: 50%;
+  overflow: hidden;
   animation: logoSpin 10s linear infinite;
+  box-shadow: 0 0 10px rgba(0, 245, 255, 0.3);
 }
 
 @keyframes logoSpin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .logo-svg {
