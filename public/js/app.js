@@ -191,9 +191,10 @@ class MusicPlayer {
     this.audioElement.volume = this.volume;
     this.pendingPlay = false;
 
-    // iOS 后台播放支持
+    // iOS 后台播放支持 - 关键属性
     this.audioElement.setAttribute('playsinline', '');
     this.audioElement.setAttribute('webkit-playsinline', '');
+    this.audioElement.setAttribute('x-webkit-airplay', 'allow');
 
     this.audioElement.addEventListener('loadedmetadata', () => this.onMetadataLoaded());
     this.audioElement.addEventListener('timeupdate', () => this.onTimeUpdate());
@@ -216,6 +217,147 @@ class MusicPlayer {
 
     // 设置 Media Session API (iOS/Android 锁屏控制)
     this.setupMediaSession();
+
+    // iOS 后台播放增强
+    this.setupiOSBackgroundAudio();
+  }
+
+  // iOS 后台播放增强处理
+  setupiOSBackgroundAudio() {
+    // 检测是否是 iOS
+    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    // 页面可见性变化处理 - 恢复播放
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        // 页面重新可见时，如果之前在播放，尝试恢复
+        if (this.isPlaying && this.audioElement.paused) {
+          console.log('Page visible, resuming playback...');
+          this.audioElement.play().catch(e => {
+            console.log('Resume failed:', e);
+          });
+        }
+        // 恢复 AudioContext
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          this.audioContext.resume();
+        }
+      }
+    });
+
+    // iOS Safari 音频中断处理（如来电）
+    this.audioElement.addEventListener('pause', () => {
+      // 记录是否是用户主动暂停
+      this.userPaused = !this.isPlaying;
+    });
+
+    // 监听 iOS 音频会话中断
+    if (this.isIOS) {
+      // 当音频被系统中断后恢复时
+      this.audioElement.addEventListener('play', () => {
+        // 确保 AudioContext 活跃
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          this.audioContext.resume();
+        }
+      });
+
+      // 使用 stalled 事件检测播放卡住
+      this.audioElement.addEventListener('stalled', () => {
+        console.log('Audio stalled, attempting recovery...');
+        if (this.isPlaying) {
+          setTimeout(() => {
+            if (this.audioElement.paused && this.isPlaying) {
+              this.audioElement.play().catch(() => {});
+            }
+          }, 1000);
+        }
+      });
+
+      // 使用 waiting 事件
+      this.audioElement.addEventListener('waiting', () => {
+        console.log('Audio waiting for data...');
+      });
+    }
+
+    // 使用 Wake Lock API 防止屏幕休眠（如果可用）
+    this.requestWakeLock();
+
+    // 创建静音音频保持会话（iOS 特殊处理）
+    if (this.isIOS) {
+      this.setupSilentAudio();
+
+      // 显示 iOS 提示
+      const iosTips = document.getElementById('iosTipsSection');
+      if (iosTips) {
+        iosTips.style.display = 'block';
+      }
+    }
+
+    console.log('iOS background audio setup complete, isIOS:', this.isIOS);
+  }
+
+  // 静音音频保持会话活跃（iOS）
+  setupSilentAudio() {
+    // 创建一个非常短的静音音频用于保持音频会话
+    // 这是一个 0.1 秒的静音 MP3
+    const silentMp3 = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwmHAAAAAAD/+xBkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQZB4P8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU=';
+
+    this.silentAudio = new Audio(silentMp3);
+    this.silentAudio.loop = true;
+    this.silentAudio.volume = 0.001; // 几乎静音
+    this.silentAudio.setAttribute('playsinline', '');
+    this.silentAudio.setAttribute('webkit-playsinline', '');
+  }
+
+  // 开始播放时激活静音音频
+  activateSilentAudio() {
+    if (this.isIOS && this.silentAudio) {
+      this.silentAudio.play().catch(() => {
+        // 忽略错误
+      });
+    }
+  }
+
+  // 停止静音音频
+  deactivateSilentAudio() {
+    if (this.silentAudio) {
+      this.silentAudio.pause();
+    }
+  }
+
+  // Wake Lock 请求（防止屏幕休眠）
+  async requestWakeLock() {
+    if ('wakeLock' in navigator) {
+      try {
+        this.wakeLock = await navigator.wakeLock.request('screen');
+        console.log('Wake Lock activated');
+
+        this.wakeLock.addEventListener('release', () => {
+          console.log('Wake Lock released');
+        });
+
+        // 页面重新可见时重新请求
+        document.addEventListener('visibilitychange', async () => {
+          if (document.visibilityState === 'visible' && this.isPlaying) {
+            try {
+              this.wakeLock = await navigator.wakeLock.request('screen');
+            } catch (e) {
+              // 忽略
+            }
+          }
+        });
+      } catch (err) {
+        console.log('Wake Lock not available:', err);
+      }
+    }
+  }
+
+  // 释放 Wake Lock
+  releaseWakeLock() {
+    if (this.wakeLock) {
+      this.wakeLock.release();
+      this.wakeLock = null;
+    }
   }
 
   // Media Session API - 实现 iOS/Android 后台播放和锁屏控制
@@ -907,6 +1049,14 @@ class MusicPlayer {
       navigator.mediaSession.playbackState = 'playing';
     }
     this.updatePositionState();
+
+    // iOS 后台播放: 激活静音音频保持会话
+    this.activateSilentAudio();
+
+    // 请求 Wake Lock
+    if (this.isIOS || 'wakeLock' in navigator) {
+      this.requestWakeLock();
+    }
   }
 
   onPause() {
@@ -919,6 +1069,9 @@ class MusicPlayer {
       navigator.mediaSession.playbackState = 'paused';
     }
     this.stopVisualizer();
+
+    // iOS 后台播放: 停用静音音频
+    this.deactivateSilentAudio();
   }
 
   onError(e) {

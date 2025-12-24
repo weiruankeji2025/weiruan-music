@@ -2062,6 +2062,53 @@ body {
   margin-top: 0.25rem;
 }
 
+/* ===== iOS Tips Section ===== */
+.ios-tips-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(88, 86, 214, 0.1) 100%);
+  border: 1px solid rgba(0, 122, 255, 0.3);
+  border-radius: var(--radius-md);
+  display: none; /* 默认隐藏，仅iOS显示 */
+}
+
+.ios-tips-section h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.ios-tips-content {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.ios-tips-content p {
+  margin: 0 0 0.5rem 0;
+}
+
+.ios-tips-content ul {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.ios-tips-content li {
+  margin-bottom: 0.25rem;
+}
+
+.ios-tips-content strong {
+  color: var(--primary);
+}
+
+.ios-tips-note {
+  margin-top: 0.75rem !important;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
 /* ===== Scan Section ===== */
 .scan-section {
   margin-top: 1.5rem;
