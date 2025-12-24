@@ -1576,12 +1576,167 @@ app.get('/api/playlist/load', (req, res) => {
   }
 });
 
+// ==================== 服务器音乐库 ====================
+// 服务器本地音乐目录（可以通过环境变量配置）
+const libraryDir = process.env.MUSIC_LIBRARY || path.join(__dirname, '../library');
+
+// 确保音乐库目录存在
+if (!fs.existsSync(libraryDir)) {
+  fs.mkdirSync(libraryDir, { recursive: true });
+  console.log(`音乐库目录已创建: ${libraryDir}`);
+}
+
+// 递归扫描目录获取所有音乐文件
+function scanMusicLibrary(dir, baseDir = dir) {
+  const results = [];
+
+  if (!fs.existsSync(dir)) {
+    return results;
+  }
+
+  const items = fs.readdirSync(dir);
+
+  for (const item of items) {
+    const fullPath = path.join(dir, item);
+    const stat = fs.statSync(fullPath);
+
+    if (stat.isDirectory()) {
+      // 递归扫描子目录
+      results.push(...scanMusicLibrary(fullPath, baseDir));
+    } else {
+      // 检查是否是音乐文件
+      const ext = path.extname(item).toLowerCase();
+      if (audioExtensions.includes(ext)) {
+        const relativePath = path.relative(baseDir, fullPath);
+        results.push({
+          id: `library:${relativePath}`,
+          name: item,
+          path: `/api/library/stream/${encodeURIComponent(relativePath)}`,
+          size: stat.size,
+          type: 'library',
+          folder: path.dirname(relativePath) === '.' ? '' : path.dirname(relativePath),
+          mtime: stat.mtime.getTime()
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+// 获取音乐库列表
+app.get('/api/library/list', (req, res) => {
+  try {
+    const files = scanMusicLibrary(libraryDir);
+    // 按修改时间排序，最新的在前
+    files.sort((a, b) => b.mtime - a.mtime);
+    res.json({
+      success: true,
+      files,
+      libraryPath: libraryDir,
+      count: files.length
+    });
+  } catch (error) {
+    console.error('扫描音乐库失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 流式播放音乐库文件
+app.get('/api/library/stream/:filepath(*)', (req, res) => {
+  try {
+    const filepath = decodeURIComponent(req.params.filepath);
+    const fullPath = path.join(libraryDir, filepath);
+
+    // 安全检查：确保路径在音乐库目录内
+    const normalizedPath = path.normalize(fullPath);
+    if (!normalizedPath.startsWith(path.normalize(libraryDir))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const stat = fs.statSync(fullPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    const ext = path.extname(fullPath).toLowerCase();
+    const contentType = audioMimeTypes[ext] || 'audio/mpeg';
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      const stream = fs.createReadStream(fullPath, { start, end });
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType
+      });
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes'
+      });
+      fs.createReadStream(fullPath).pipe(res);
+    }
+  } catch (error) {
+    console.error('流式播放失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取音乐库文件的内嵌封面
+app.get('/api/library/cover/:filepath(*)', async (req, res) => {
+  try {
+    if (!musicMetadata) {
+      return res.status(500).json({ success: false, error: 'music-metadata not available' });
+    }
+
+    const filepath = decodeURIComponent(req.params.filepath);
+    const fullPath = path.join(libraryDir, filepath);
+
+    // 安全检查
+    const normalizedPath = path.normalize(fullPath);
+    if (!normalizedPath.startsWith(path.normalize(libraryDir))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+
+    const metadata = await musicMetadata.parseFile(fullPath);
+    const picture = metadata.common.picture?.[0];
+
+    if (picture) {
+      res.setHeader('Content-Type', picture.format);
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+      res.send(picture.data);
+    } else {
+      res.status(404).json({ success: false, error: 'No embedded cover' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Serve index.html for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 app.listen(PORT, () => {
+  // 扫描并显示音乐库信息
+  const libraryFiles = scanMusicLibrary(libraryDir);
+  const libraryCount = libraryFiles.length;
+
   console.log(`
   ╔═══════════════════════════════════════════════════════════╗
   ║                                                           ║
@@ -1589,6 +1744,9 @@ app.listen(PORT, () => {
   ║                                                           ║
   ║   本地:    http://localhost:${PORT}                          ║
   ║   网络:    http://0.0.0.0:${PORT}                            ║
+  ║                                                           ║
+  ║   📁 音乐库目录: ${libraryDir.padEnd(39)}║
+  ║   🎶 音乐库歌曲: ${String(libraryCount).padEnd(39)}║
   ║                                                           ║
   ║   支持的云存储:                                            ║
   ║   • WebDAV (Nextcloud, ownCloud, 坚果云)                  ║
