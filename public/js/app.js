@@ -2880,6 +2880,161 @@ class MusicPlayer {
       }
     }
   }
+
+  // ===== 歌曲批量识别扫描功能 =====
+
+  async startScan() {
+    const startBtn = document.getElementById('startScanBtn');
+    const stopBtn = document.getElementById('stopScanBtn');
+    const progressDiv = document.getElementById('scanProgress');
+    const resultsDiv = document.getElementById('scanResults');
+
+    // 更新UI状态
+    startBtn.disabled = true;
+    startBtn.style.opacity = '0.5';
+    stopBtn.disabled = false;
+    stopBtn.style.opacity = '1';
+    progressDiv.style.display = 'block';
+    resultsDiv.style.display = 'none';
+
+    document.getElementById('scanStatusText').textContent = '正在启动扫描...';
+    document.getElementById('scanCount').textContent = '0/0';
+    document.getElementById('scanProgressFill').style.width = '0%';
+    document.getElementById('scanCurrentFile').textContent = '';
+
+    try {
+      const response = await fetch('/api/scan/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        // 开始轮询扫描状态
+        this.scanPolling = setInterval(() => this.pollScanStatus(), 1000);
+      } else {
+        const error = await response.json();
+        this.showScanError(error.error || '启动扫描失败');
+      }
+    } catch (error) {
+      console.error('启动扫描失败:', error);
+      this.showScanError('网络错误，无法启动扫描');
+    }
+  }
+
+  async stopScan() {
+    const startBtn = document.getElementById('startScanBtn');
+    const stopBtn = document.getElementById('stopScanBtn');
+
+    try {
+      await fetch('/api/scan/stop', { method: 'POST' });
+
+      // 停止轮询
+      if (this.scanPolling) {
+        clearInterval(this.scanPolling);
+        this.scanPolling = null;
+      }
+
+      document.getElementById('scanStatusText').textContent = '扫描已停止';
+
+      // 恢复按钮状态
+      startBtn.disabled = false;
+      startBtn.style.opacity = '1';
+      stopBtn.disabled = true;
+      stopBtn.style.opacity = '0.5';
+    } catch (error) {
+      console.error('停止扫描失败:', error);
+    }
+  }
+
+  async pollScanStatus() {
+    try {
+      const response = await fetch('/api/scan/status');
+      const status = await response.json();
+
+      const progressFill = document.getElementById('scanProgressFill');
+      const statusText = document.getElementById('scanStatusText');
+      const countText = document.getElementById('scanCount');
+      const currentFile = document.getElementById('scanCurrentFile');
+
+      // 更新进度条
+      const percent = status.total > 0 ? (status.processed / status.total * 100) : 0;
+      progressFill.style.width = percent + '%';
+
+      // 更新计数
+      countText.textContent = `${status.processed}/${status.total}`;
+
+      // 更新状态文字
+      if (status.isScanning) {
+        statusText.textContent = '正在扫描...';
+        if (status.currentFile) {
+          currentFile.textContent = `当前: ${status.currentFile}`;
+        }
+      } else {
+        // 扫描完成
+        statusText.textContent = '扫描完成';
+        currentFile.textContent = '';
+
+        // 停止轮询
+        if (this.scanPolling) {
+          clearInterval(this.scanPolling);
+          this.scanPolling = null;
+        }
+
+        // 恢复按钮状态
+        const startBtn = document.getElementById('startScanBtn');
+        const stopBtn = document.getElementById('stopScanBtn');
+        startBtn.disabled = false;
+        startBtn.style.opacity = '1';
+        stopBtn.disabled = true;
+        stopBtn.style.opacity = '0.5';
+
+        // 显示结果摘要
+        this.showScanResults(status);
+      }
+    } catch (error) {
+      console.error('获取扫描状态失败:', error);
+    }
+  }
+
+  showScanResults(status) {
+    const resultsDiv = document.getElementById('scanResults');
+    const summaryDiv = document.getElementById('scanSummary');
+
+    resultsDiv.style.display = 'block';
+
+    let html = `<div class="scan-summary-item success">✓ 成功识别: ${status.processed - status.errors.length} 首</div>`;
+
+    if (status.errors.length > 0) {
+      html += `<div class="scan-summary-item error">✗ 识别失败: ${status.errors.length} 首</div>`;
+      html += '<div class="scan-error-list">';
+      status.errors.slice(0, 10).forEach(err => {
+        html += `<div class="scan-error-item">${err.file}: ${err.error}</div>`;
+      });
+      if (status.errors.length > 10) {
+        html += `<div class="scan-error-item">...还有 ${status.errors.length - 10} 个错误</div>`;
+      }
+      html += '</div>';
+    }
+
+    summaryDiv.innerHTML = html;
+  }
+
+  showScanError(message) {
+    const startBtn = document.getElementById('startScanBtn');
+    const stopBtn = document.getElementById('stopScanBtn');
+
+    document.getElementById('scanStatusText').textContent = message;
+
+    startBtn.disabled = false;
+    startBtn.style.opacity = '1';
+    stopBtn.disabled = true;
+    stopBtn.style.opacity = '0.5';
+
+    if (this.scanPolling) {
+      clearInterval(this.scanPolling);
+      this.scanPolling = null;
+    }
+  }
 }
 
 // Initialize player
