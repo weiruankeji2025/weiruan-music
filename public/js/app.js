@@ -903,6 +903,10 @@ class MusicPlayer {
 
   async loadServerFiles() {
     try {
+      // 首先加载服务器音乐库（所有IP都能访问）
+      await this.loadMusicLibrary();
+
+      // 然后加载用户上传的文件
       const response = await fetch('/api/files');
       const result = await response.json();
       if (result.success && result.files.length > 0) {
@@ -915,6 +919,40 @@ class MusicPlayer {
       }
     } catch (error) {
       console.error('Failed to load server files:', error);
+    }
+  }
+
+  // 加载服务器音乐库（固定音乐，所有IP都能访问）
+  async loadMusicLibrary() {
+    try {
+      const response = await fetch('/api/library/list');
+      const result = await response.json();
+
+      if (result.success && result.files.length > 0) {
+        console.log(`发现 ${result.count} 首音乐库歌曲`);
+
+        result.files.forEach(file => {
+          // 检查是否已存在
+          if (!this.playlist.find(t => t.id === file.id)) {
+            this.playlist.push({
+              id: file.id,
+              name: file.name,
+              path: file.path,
+              type: 'library',
+              folder: file.folder,
+              size: file.size
+            });
+          }
+        });
+
+        this.updatePlaylistUI();
+
+        if (result.count > 0) {
+          this.showNotification(`已加载 ${result.count} 首音乐库歌曲`, 'info');
+        }
+      }
+    } catch (error) {
+      console.error('加载音乐库失败:', error);
     }
   }
 
@@ -2568,10 +2606,20 @@ class MusicPlayer {
 
     let coverLoaded = false;
 
-    // 首先尝试读取内嵌封面（仅对本地上传的文件）
-    if (track.type === 'local' && track.id) {
+    // 首先尝试读取内嵌封面（本地上传文件和音乐库文件）
+    if ((track.type === 'local' || track.type === 'library') && track.id) {
       try {
-        const embeddedUrl = `/api/cover/embedded/${encodeURIComponent(track.id)}`;
+        // 根据类型构建封面URL
+        let embeddedUrl;
+        if (track.type === 'library') {
+          // 音乐库文件：从id中提取相对路径
+          const relativePath = track.id.replace('library:', '');
+          embeddedUrl = `/api/library/cover/${encodeURIComponent(relativePath)}`;
+        } else {
+          // 本地上传文件
+          embeddedUrl = `/api/cover/embedded/${encodeURIComponent(track.id)}`;
+        }
+
         const img = new Image();
 
         await new Promise((resolve, reject) => {
