@@ -1341,6 +1341,261 @@ app.get('/api/local/stream', async (req, res) => {
 
 // ==================== 音乐信息API (封面/歌词) ====================
 
+// 解析文件名获取歌曲名和歌手名
+function parseFileName(filename) {
+  // 移除扩展名
+  let name = filename.replace(/\.(mp3|flac|wav|ogg|m4a|aac|wma)$/i, '');
+
+  // 常见的文件名格式:
+  // 1. "歌手 - 歌名"
+  // 2. "歌名 - 歌手"
+  // 3. "01. 歌手 - 歌名"
+  // 4. "歌手-歌名"
+  // 5. "歌名"
+
+  // 移除开头的序号
+  name = name.replace(/^(\d+\.?\s*[-_]?\s*)/g, '');
+
+  // 移除括号内容
+  name = name.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(/【[^】]*】/g, '');
+
+  let artist = null;
+  let songName = name.trim();
+
+  // 尝试用 " - " 分割
+  if (name.includes(' - ')) {
+    const parts = name.split(' - ').map(p => p.trim()).filter(p => p);
+    if (parts.length >= 2) {
+      // 判断哪个是歌手：通常歌手名较短，或者包含常见歌手名
+      const part1 = parts[0];
+      const part2 = parts.slice(1).join(' - ');
+
+      // 简单规则：第一部分当作歌手
+      artist = part1;
+      songName = part2;
+    }
+  } else if (name.includes('-') && !name.includes(' ')) {
+    // 紧凑格式 "歌手-歌名"
+    const parts = name.split('-').map(p => p.trim()).filter(p => p);
+    if (parts.length >= 2) {
+      artist = parts[0];
+      songName = parts.slice(1).join('-');
+    }
+  }
+
+  return {
+    songName: songName.trim(),
+    artist: artist ? artist.trim() : null,
+    original: filename
+  };
+}
+
+// 内建歌手资料库
+const artistDatabase = {
+  '周杰伦': {
+    name: '周杰伦',
+    alias: ['Jay Chou', 'Jay'],
+    avatar: 'https://p1.music.126.net/cpUh3AxzNVDuqJqoYHW_-A==/109951168477461650.jpg',
+    description: '华语流行乐坛天王，台湾著名歌手、词曲创作人、导演、演员。2000年发行首张专辑《Jay》一炮而红，代表作有《双节棍》《青花瓷》《稻香》《晴天》《告白气球》等。音乐风格融合R&B、中国风、说唱等多种元素，被誉为"亚洲流行天王"。',
+    tags: ['华语', 'R&B', '中国风', '说唱'],
+    birthYear: 1979
+  },
+  '林俊杰': {
+    name: '林俊杰',
+    alias: ['JJ Lin', 'JJ'],
+    avatar: 'https://p1.music.126.net/S2dcGZD7u_jB_yEZgqvFbg==/109951163020569640.jpg',
+    description: '新加坡华语流行乐男歌手、词曲创作者、音乐制作人。代表作有《江南》《曹操》《小酒窝》《可惜没如果》《修炼爱情》等，以高超的唱功和优美的旋律著称。',
+    tags: ['华语', '流行', '情歌'],
+    birthYear: 1981
+  },
+  '陈奕迅': {
+    name: '陈奕迅',
+    alias: ['Eason Chan', 'Eason', '医生'],
+    avatar: 'https://p1.music.126.net/y4JQOSHzrRbLPqMvWrSXdw==/109951163070235439.jpg',
+    description: '香港著名歌手，被誉为"歌神"。代表作有《十年》《K歌之王》《浮夸》《富士山下》《孤勇者》等，声线独特，情感表达细腻，是华语乐坛最具影响力的歌手之一。',
+    tags: ['粤语', '华语', '流行', '情歌'],
+    birthYear: 1974
+  },
+  '邓紫棋': {
+    name: '邓紫棋',
+    alias: ['G.E.M.', 'GEM'],
+    avatar: 'https://p1.music.126.net/i0brtBnJr0hgAadMmMGD8g==/109951168290806506.jpg',
+    description: '香港创作女歌手，以强大的唱功和创作能力著称。代表作有《泡沫》《光年之外》《句号》《倒数》《平凡天使》等，被誉为"铁肺女王"。',
+    tags: ['华语', '流行', '电子'],
+    birthYear: 1991
+  },
+  '薛之谦': {
+    name: '薛之谦',
+    alias: ['Joker Xue'],
+    avatar: 'https://p1.music.126.net/v5NdJWF1O6bh_ycI0S6qWQ==/109951165695748609.jpg',
+    description: '中国内地流行男歌手、音乐制作人、演员。代表作有《演员》《丑八怪》《绅士》《认真的雪》《像风一样》等，以深情细腻的演唱风格著称。',
+    tags: ['华语', '流行', '情歌'],
+    birthYear: 1983
+  },
+  '周深': {
+    name: '周深',
+    alias: ['Charlie Zhou', 'Zhou Shen'],
+    avatar: 'https://p1.music.126.net/r-b7DpF8UOx0K_nWQTmhsA==/109951166586194201.jpg',
+    description: '中国内地男歌手，以独特的高音和空灵的声线著称。代表作有《大鱼》《起风了》《达拉崩吧》《光亮》《明月传说》等，被誉为"人间天籁"。',
+    tags: ['华语', '流行', 'OST', '古风'],
+    birthYear: 1992
+  },
+  '毛不易': {
+    name: '毛不易',
+    alias: ['Mao Buyi'],
+    avatar: 'https://p1.music.126.net/EFfJSfz0xSJWP1aWYvIPYQ==/109951163254825398.jpg',
+    description: '中国内地男歌手、音乐人。代表作有《消愁》《像我这样的人》《平凡的一天》《无问》等，以朴实真挚的词曲创作和温暖的歌声打动人心。',
+    tags: ['华语', '民谣', '流行'],
+    birthYear: 1994
+  },
+  '华晨宇': {
+    name: '华晨宇',
+    alias: ['Hua Chenyu'],
+    avatar: 'https://p1.music.126.net/WwfRXIHqmMO0O8PNaWoJaA==/109951165792783096.jpg',
+    description: '中国内地男歌手、词曲创作人。以独特的音乐风格和强大的现场演唱能力著称，代表作有《齐天》《烟火里的尘埃》《好想爱这个世界啊》《我们》等。',
+    tags: ['华语', '流行', '摇滚'],
+    birthYear: 1990
+  },
+  '李荣浩': {
+    name: '李荣浩',
+    alias: ['Li Ronghao'],
+    avatar: 'https://p1.music.126.net/S_wRSMWkSTZOXvPJZCz6dQ==/109951164387049573.jpg',
+    description: '中国内地男歌手、音乐制作人、吉他手。代表作有《李白》《模特》《年少有为》《麻雀》《不将就》等，以深情的嗓音和优秀的创作能力著称。',
+    tags: ['华语', '流行', '摇滚'],
+    birthYear: 1985
+  },
+  'Taylor Swift': {
+    name: 'Taylor Swift',
+    alias: ['泰勒·斯威夫特', '霉霉', 'Taylor'],
+    avatar: 'https://p1.music.126.net/PFx-5t8l1_9J83EZZ5Ci_Q==/109951168538085393.jpg',
+    description: '美国著名创作歌手，全球最具影响力的音乐人之一。从乡村音乐出道，逐渐转型为流行巨星。代表作有《Love Story》《Shake It Off》《Blank Space》《Anti-Hero》等。',
+    tags: ['欧美', '流行', '乡村'],
+    birthYear: 1989
+  },
+  'Ed Sheeran': {
+    name: 'Ed Sheeran',
+    alias: ['艾德·希兰'],
+    avatar: 'https://p1.music.126.net/q-z_Rqe6m7pBp3f_s_1g2w==/109951163284940334.jpg',
+    description: '英国创作歌手，以抒情民谣和流行音乐著称。代表作有《Shape of You》《Perfect》《Thinking Out Loud》《Photograph》等。',
+    tags: ['欧美', '流行', '民谣'],
+    birthYear: 1991
+  },
+  '五月天': {
+    name: '五月天',
+    alias: ['Mayday'],
+    avatar: 'https://p1.music.126.net/FnB-4LMFtLjHl6GUqhsA2Q==/109951165898633787.jpg',
+    description: '台湾著名摇滚乐团，华语乐坛最具影响力的乐队之一。代表作有《倔强》《突然好想你》《知足》《温柔》《伤心的人别听慢歌》等。',
+    tags: ['华语', '摇滚', '流行'],
+    birthYear: 1997
+  },
+  '蔡依林': {
+    name: '蔡依林',
+    alias: ['Jolin Tsai', 'Jolin'],
+    avatar: 'https://p1.music.126.net/RCz8d8rZTYB9JFgY9dJ-Qw==/109951163191906315.jpg',
+    description: '台湾著名女歌手，被誉为"亚洲流行天后"。代表作有《日不落》《舞娘》《说爱你》《玫瑰少年》等，以华丽的舞台表演和多变的音乐风格著称。',
+    tags: ['华语', '流行', '电子', '舞曲'],
+    birthYear: 1980
+  },
+  '王力宏': {
+    name: '王力宏',
+    alias: ['Leehom Wang', 'Leehom'],
+    avatar: 'https://p1.music.126.net/gfx-_3d2F9mRUPVLPqFexQ==/109951167996283795.jpg',
+    description: '美籍华裔创作歌手、音乐制作人、演员、导演。代表作有《唯一》《你不知道的事》《落叶归根》《改变自己》等，被誉为"优质偶像"。',
+    tags: ['华语', 'R&B', '流行'],
+    birthYear: 1976
+  },
+  '张学友': {
+    name: '张学友',
+    alias: ['Jacky Cheung', '歌神'],
+    avatar: 'https://p1.music.126.net/63gmN3F0Sd6k_K5BrYJy2A==/109951163500574953.jpg',
+    description: '香港著名歌手、演员，被誉为"四大天王"之一和"歌神"。代表作有《吻别》《一路上有你》《只想一生跟你走》《慢慢》等，是华语乐坛最成功的歌手之一。',
+    tags: ['粤语', '华语', '流行', '情歌'],
+    birthYear: 1961
+  },
+  'BTS': {
+    name: 'BTS',
+    alias: ['防弹少年团', 'Bangtan Boys'],
+    avatar: 'https://p1.music.126.net/uolW9m8uu1XHxFZQMH4PqA==/109951167910983601.jpg',
+    description: '韩国男子音乐组合，全球最具影响力的K-Pop团体之一。代表作有《Dynamite》《Butter》《Spring Day》《Boy With Luv》等。',
+    tags: ['韩语', 'K-Pop', '流行'],
+    birthYear: 2013
+  },
+  'BLACKPINK': {
+    name: 'BLACKPINK',
+    alias: ['블랙핑크'],
+    avatar: 'https://p1.music.126.net/DvUC_D2B30oT_9RfIJD_cQ==/109951168542766098.jpg',
+    description: '韩国女子音乐组合，全球最具影响力的K-Pop女团之一。代表作有《DDU-DU DDU-DU》《How You Like That》《Pink Venom》等。',
+    tags: ['韩语', 'K-Pop', '流行'],
+    birthYear: 2016
+  }
+};
+
+// 搜索歌手信息
+function findArtistInfo(artistName) {
+  if (!artistName) return null;
+
+  const name = artistName.trim();
+
+  // 直接匹配
+  if (artistDatabase[name]) {
+    return artistDatabase[name];
+  }
+
+  // 别名匹配
+  for (const key in artistDatabase) {
+    const artist = artistDatabase[key];
+    if (artist.alias && artist.alias.some(a =>
+      a.toLowerCase() === name.toLowerCase() ||
+      name.toLowerCase().includes(a.toLowerCase()) ||
+      a.toLowerCase().includes(name.toLowerCase())
+    )) {
+      return artist;
+    }
+  }
+
+  // 部分匹配
+  for (const key in artistDatabase) {
+    if (key.includes(name) || name.includes(key)) {
+      return artistDatabase[key];
+    }
+  }
+
+  return null;
+}
+
+// 获取歌手信息API
+app.get('/api/artist/info', (req, res) => {
+  const { name } = req.query;
+  if (!name) {
+    return res.json({ success: false, error: '缺少歌手名称' });
+  }
+
+  const artist = findArtistInfo(name);
+  if (artist) {
+    res.json({ success: true, artist });
+  } else {
+    res.json({ success: false, error: '未找到歌手信息' });
+  }
+});
+
+// 解析文件名API
+app.get('/api/parse/filename', (req, res) => {
+  const { name } = req.query;
+  if (!name) {
+    return res.json({ success: false, error: '缺少文件名' });
+  }
+
+  const parsed = parseFileName(name);
+  const artistInfo = parsed.artist ? findArtistInfo(parsed.artist) : null;
+
+  res.json({
+    success: true,
+    songName: parsed.songName,
+    artist: parsed.artist,
+    artistInfo: artistInfo
+  });
+});
+
 // 清理歌曲名称的辅助函数
 function cleanSongName(name) {
   return name
