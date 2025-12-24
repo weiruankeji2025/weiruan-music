@@ -2615,8 +2615,79 @@ class MusicPlayer {
     }
   }
 
+  // 解析文件名获取歌曲名和歌手
+  parseFileName(filename) {
+    let name = filename.replace(/\.(mp3|flac|wav|ogg|m4a|aac|wma)$/i, '');
+    name = name.replace(/^(\d+\.?\s*[-_]?\s*)/g, '');
+    name = name.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(/【[^】]*】/g, '');
+
+    let artist = null;
+    let songName = name.trim();
+
+    if (name.includes(' - ')) {
+      const parts = name.split(' - ').map(p => p.trim()).filter(p => p);
+      if (parts.length >= 2) {
+        artist = parts[0];
+        songName = parts.slice(1).join(' - ');
+      }
+    } else if (name.includes('-') && !name.includes(' ')) {
+      const parts = name.split('-').map(p => p.trim()).filter(p => p);
+      if (parts.length >= 2) {
+        artist = parts[0];
+        songName = parts.slice(1).join('-');
+      }
+    }
+
+    return { songName: songName.trim(), artist: artist ? artist.trim() : null };
+  }
+
+  // 显示歌手介绍
+  async showArtistInfo(artistName) {
+    if (!artistName) return;
+
+    try {
+      const response = await fetch(`/api/artist/info?name=${encodeURIComponent(artistName)}`);
+      const result = await response.json();
+
+      if (result.success && result.artist) {
+        this.currentArtistInfo = result.artist;
+        this.updateArtistInfoUI(result.artist);
+      } else {
+        this.currentArtistInfo = null;
+        this.hideArtistInfo();
+      }
+    } catch (e) {
+      console.error('获取歌手信息失败:', e);
+    }
+  }
+
+  updateArtistInfoUI(artist) {
+    const container = document.getElementById('artistInfoContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="artist-info-card">
+        <div class="artist-avatar">
+          <img src="${artist.avatar}" alt="${artist.name}" onerror="this.src='/img/default-cover.svg'">
+        </div>
+        <div class="artist-details">
+          <h4>${artist.name}</h4>
+          <div class="artist-tags">${artist.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+          <p class="artist-desc">${artist.description}</p>
+        </div>
+      </div>
+    `;
+    container.style.display = 'block';
+  }
+
+  hideArtistInfo() {
+    const container = document.getElementById('artistInfoContainer');
+    if (container) {
+      container.style.display = 'none';
+    }
+  }
+
   async fetchCoverAndLyrics(track) {
-    const trackName = track.name.replace(/\.[^/.]+$/, '');
     const albumArt = document.getElementById('albumArt');
     const miniArt = document.getElementById('miniArt');
 
@@ -2624,24 +2695,47 @@ class MusicPlayer {
     this.currentLyrics = null;
     document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">正在获取歌词...</p>';
 
+    // 1. 首先解析文件名获取歌曲名和歌手
+    const parsed = this.parseFileName(track.name);
+    const songName = parsed.songName;
+    const artistFromFile = parsed.artist;
+
+    // 更新显示的歌曲名和歌手
+    if (songName) {
+      document.getElementById('trackTitle').textContent = songName;
+      document.getElementById('miniTitle').textContent = songName;
+    }
+
+    if (artistFromFile && !track.artist) {
+      track.artist = artistFromFile;
+      document.getElementById('trackArtist').textContent = artistFromFile;
+      document.getElementById('miniArtist').textContent = artistFromFile;
+    }
+
+    // 2. 获取歌手详细介绍
+    const artistName = track.artist || artistFromFile;
+    if (artistName) {
+      this.showArtistInfo(artistName);
+    } else {
+      this.hideArtistInfo();
+    }
+
     let coverLoaded = false;
 
-    // 首先尝试读取内嵌封面（本地上传文件和音乐库文件）
+    // 3. 优先尝试读取内嵌封面（本地上传文件和音乐库文件）
     if ((track.type === 'local' || track.type === 'library') && track.id) {
       try {
-        // 根据类型构建封面URL
         let embeddedUrl;
         if (track.type === 'library') {
-          // 音乐库文件：从id中提取相对路径
           const relativePath = track.id.replace('library:', '');
-          embeddedUrl = `/api/library/cover/${encodeURIComponent(relativePath)}`;
+          // 对路径每部分分别编码，保留目录分隔符
+          const encodedPath = relativePath.split(/[\/\\]/).map(p => encodeURIComponent(p)).join('/');
+          embeddedUrl = `/api/library/cover/${encodedPath}`;
         } else {
-          // 本地上传文件
           embeddedUrl = `/api/cover/embedded/${encodeURIComponent(track.id)}`;
         }
 
         const img = new Image();
-
         await new Promise((resolve, reject) => {
           img.onload = () => {
             albumArt.innerHTML = `<img src="${embeddedUrl}" alt="Album Art">`;
@@ -2657,20 +2751,21 @@ class MusicPlayer {
           img.src = embeddedUrl;
         });
       } catch (e) {
-        // 没有内嵌封面，继续尝试网络获取
+        // 没有内嵌封面，继续网络获取
       }
     }
 
-    // 从网络获取封面和歌词
+    // 4. 从网络获取封面和歌词（使用解析后的歌曲名搜索更准确）
+    const searchName = artistName ? `${artistName} ${songName}` : songName;
+
     try {
-      const response = await fetch(`/api/music/info?name=${encodeURIComponent(trackName)}`);
+      const response = await fetch(`/api/music/info?name=${encodeURIComponent(searchName)}`);
       const result = await response.json();
 
       if (result.success) {
         // 如果没有内嵌封面，使用网络封面
         if (!coverLoaded && result.cover) {
           const proxyUrl = `/api/cover/proxy?url=${encodeURIComponent(result.cover)}`;
-
           const img = new Image();
           img.onload = () => {
             albumArt.innerHTML = `<img src="${proxyUrl}" alt="Album Art">`;
@@ -2681,10 +2776,14 @@ class MusicPlayer {
             this.updatePlaylistUI();
           };
           img.onerror = () => {
-            console.log('网络封面加载失败，使用默认封面');
-            this.setDefaultCover(albumArt, miniArt);
+            if (!coverLoaded) {
+              console.log('网络封面加载失败，使用默认封面');
+              this.setDefaultCover(albumArt, miniArt);
+            }
           };
           img.src = proxyUrl;
+        } else if (!coverLoaded) {
+          this.setDefaultCover(albumArt, miniArt);
         }
 
         // 更新歌词
@@ -2695,23 +2794,27 @@ class MusicPlayer {
           document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
         }
 
-        // 更新艺术家信息
-        if (result.artist) {
+        // 更新艺术家信息（优先使用网络获取的）
+        if (result.artist && !track.artist) {
           track.artist = result.artist;
           document.getElementById('trackArtist').textContent = result.artist;
           document.getElementById('miniArtist').textContent = result.artist;
+          // 重新获取歌手介绍
+          this.showArtistInfo(result.artist);
         }
       } else {
+        if (!coverLoaded) {
+          this.setDefaultCover(albumArt, miniArt);
+        }
         document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
       }
     } catch (error) {
       console.error('获取音乐信息失败:', error);
       document.getElementById('lyricsText').innerHTML = '<p class="lyrics-placeholder">暂无歌词</p>';
-      // 确保显示默认封面
-      const albumArt = document.getElementById('albumArt');
-      const miniArt = document.getElementById('miniArt');
-      albumArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" class="default-cover">`;
-      if (miniArt) {
+      if (!coverLoaded) {
+        this.setDefaultCover(albumArt, miniArt);
+      }
+      if (miniArt && !coverLoaded) {
         miniArt.innerHTML = `<img src="/img/default-cover.svg" alt="Album Art" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
       }
     }
