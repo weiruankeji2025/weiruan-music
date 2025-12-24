@@ -3035,6 +3035,116 @@ class MusicPlayer {
       this.scanPolling = null;
     }
   }
+
+  // ===== 写入元数据到音乐文件 =====
+
+  async writeAllMetadata() {
+    const writeBtn = document.getElementById('writeMetadataBtn');
+    const writeProgress = document.getElementById('writeProgress');
+    const writeProgressFill = document.getElementById('writeProgressFill');
+    const writeStatusText = document.getElementById('writeStatusText');
+    const writeCount = document.getElementById('writeCount');
+
+    // 禁用按钮
+    writeBtn.disabled = true;
+    writeBtn.style.opacity = '0.5';
+    writeProgress.style.display = 'block';
+    writeStatusText.textContent = '正在获取元数据列表...';
+    writeProgressFill.style.width = '0%';
+
+    try {
+      // 首先获取元数据列表
+      const listResponse = await fetch('/api/metadata/list');
+      const listData = await listResponse.json();
+
+      if (!listData.success || !listData.metadata || Object.keys(listData.metadata).length === 0) {
+        writeStatusText.textContent = '没有可写入的元数据，请先扫描歌曲';
+        writeBtn.disabled = false;
+        writeBtn.style.opacity = '1';
+        return;
+      }
+
+      const songs = Object.values(listData.metadata);
+      const songsToWrite = songs.filter(s => s.cover || s.lyrics);
+      const total = songsToWrite.length;
+
+      if (total === 0) {
+        writeStatusText.textContent = '没有需要写入的封面或歌词';
+        writeBtn.disabled = false;
+        writeBtn.style.opacity = '1';
+        return;
+      }
+
+      writeCount.textContent = `0/${total}`;
+      writeStatusText.textContent = '正在写入...';
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (let i = 0; i < songsToWrite.length; i++) {
+        const song = songsToWrite[i];
+
+        try {
+          const response = await fetch('/api/metadata/write', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filepath: song.filePath,
+              cover: song.cover,
+              lyrics: song.lyrics,
+              title: song.songName,
+              artist: song.artist
+            })
+          });
+
+          const result = await response.json();
+          if (result.success) {
+            successCount++;
+          } else {
+            errorCount++;
+            console.error(`写入失败 ${song.songName}:`, result.error);
+          }
+        } catch (e) {
+          errorCount++;
+          console.error(`写入失败 ${song.songName}:`, e.message);
+        }
+
+        // 更新进度
+        const progress = ((i + 1) / total * 100);
+        writeProgressFill.style.width = progress + '%';
+        writeCount.textContent = `${i + 1}/${total}`;
+      }
+
+      // 完成
+      writeStatusText.textContent = `写入完成: 成功 ${successCount} 首, 失败 ${errorCount} 首`;
+      writeBtn.disabled = false;
+      writeBtn.style.opacity = '1';
+
+      // 显示通知
+      this.showNotification(`元数据写入完成: 成功 ${successCount} 首`, 'success');
+
+    } catch (error) {
+      console.error('写入元数据失败:', error);
+      writeStatusText.textContent = '写入失败: ' + error.message;
+      writeBtn.disabled = false;
+      writeBtn.style.opacity = '1';
+    }
+  }
+
+  showNotification(message, type = 'info') {
+    const container = document.getElementById('notifications');
+    if (!container) return;
+
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    container.appendChild(notification);
+
+    setTimeout(() => {
+      notification.classList.add('fade-out');
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  }
 }
 
 // Initialize player
