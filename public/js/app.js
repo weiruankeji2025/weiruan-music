@@ -266,7 +266,16 @@ class MusicPlayer {
     // Progress bar
     const progressBar = document.getElementById('progressBar');
     progressBar.addEventListener('click', (e) => this.seekTo(e));
-    document.getElementById('miniProgressBar').addEventListener('click', (e) => this.seekToMini(e));
+
+    // Mini progress bar - 使用父容器扩大触摸区域
+    const miniProgressContainer = document.querySelector('.mini-progress');
+    if (miniProgressContainer) {
+      miniProgressContainer.addEventListener('click', (e) => this.seekToMini(e));
+      miniProgressContainer.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        this.seekToMini(e);
+      }, { passive: false });
+    }
 
     // Volume
     const volumeSlider = document.getElementById('volumeSlider');
@@ -667,8 +676,16 @@ class MusicPlayer {
   }
 
   seekToMini(e) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
+    if (!this.audioElement.duration || isNaN(this.audioElement.duration)) return;
+
+    // 获取进度条内部元素的位置
+    const progressBar = document.getElementById('miniProgressBar');
+    const rect = progressBar ? progressBar.getBoundingClientRect() : e.currentTarget.getBoundingClientRect();
+
+    // 支持触摸事件
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+
     this.audioElement.currentTime = percent * this.audioElement.duration;
   }
 
