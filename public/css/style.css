@@ -1844,6 +1844,11 @@ body {
     gap: 1rem;
   }
 
+  /* 移动端始终显示删除按钮 */
+  .item-actions {
+    opacity: 1;
+  }
+
   .form-row {
     grid-template-columns: 1fr;
   }

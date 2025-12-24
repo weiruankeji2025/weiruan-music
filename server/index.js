@@ -56,19 +56,26 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + Buffer.from(file.originalname, 'latin1').toString('utf8'));
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    // 清理文件名，移除特殊字符
+    const safeName = originalName.replace(/[<>:"/\\|?*]/g, '_');
+    cb(null, uniqueSuffix + '-' + safeName);
   }
 });
 
 const upload = multer({
   storage,
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500MB per file
+    files: 100 // max 100 files
+  },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Unsupported audio format'));
+      cb(null, false); // Skip unsupported files instead of error
     }
   }
 });
@@ -86,18 +93,68 @@ const audioMimeTypes = {
 
 const audioExtensions = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma'];
 
-// Upload local music files
-app.post('/api/upload', upload.array('files', 50), async (req, res) => {
+// music-metadata for reading embedded covers
+let musicMetadata = null;
+(async () => {
   try {
-    const files = req.files.map(file => ({
-      id: file.filename,
-      name: Buffer.from(file.originalname, 'latin1').toString('utf8'),
-      path: `/api/music/${file.filename}`,
-      size: file.size,
-      type: 'local'
-    }));
+    musicMetadata = await import('music-metadata');
+  } catch (e) {
+    console.log('music-metadata not available:', e.message);
+  }
+})();
+
+// Upload local music files with better error handling
+app.post('/api/upload', upload.array('files', 100), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, error: '没有上传文件' });
+    }
+
+    const files = req.files.map(file => {
+      const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+      return {
+        id: file.filename,
+        name: originalName,
+        path: `/api/music/${encodeURIComponent(file.filename)}`,
+        size: file.size,
+        type: 'local'
+      };
+    });
+
+    console.log(`成功上传 ${files.length} 个文件`);
     res.json({ success: true, files });
   } catch (error) {
+    console.error('上传失败:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get embedded cover from audio file
+app.get('/api/cover/embedded/:filename', async (req, res) => {
+  try {
+    if (!musicMetadata) {
+      return res.status(500).json({ success: false, error: 'music-metadata not available' });
+    }
+
+    const filename = decodeURIComponent(req.params.filename);
+    const filePath = path.join(uploadDir, filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+
+    const metadata = await musicMetadata.parseFile(filePath);
+    const picture = metadata.common.picture?.[0];
+
+    if (picture) {
+      res.setHeader('Content-Type', picture.format);
+      res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+      res.send(picture.data);
+    } else {
+      res.status(404).json({ success: false, error: 'No embedded cover' });
+    }
+  } catch (error) {
+    console.error('读取内嵌封面失败:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
