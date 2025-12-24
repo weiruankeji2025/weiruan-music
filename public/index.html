@@ -2,12 +2,154 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>微软音乐 - 现代网页音乐播放器</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="description" content="Modern Web Music Player with Cloud Storage Support">
+  <meta name="theme-color" content="#00f5ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WeiRuan Music">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="WeiRuan Music">
+  <meta name="msapplication-TileColor" content="#0a0a0f">
+  <meta name="msapplication-TileImage" content="/img/icons/icon-144x144.png">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Favicon and Icons -->
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/img/icons/icon-96x96.png">
+  <link rel="apple-touch-icon" href="/img/icons/icon-192x192.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="/img/icons/icon-152x152.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/img/icons/icon-192x192.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="/img/icons/icon-192x192.png">
+
+  <!-- Splash Screens for iOS -->
+  <link rel="apple-touch-startup-image" href="/img/icons/icon-512x512.png">
+
   <link rel="stylesheet" href="css/style.css">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Splash Screen Styles -->
+  <style>
+    .splash-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0a0a0f 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+    .splash-screen.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+    .splash-logo {
+      width: 120px;
+      height: 120px;
+      animation: pulse 2s ease-in-out infinite, float 3s ease-in-out infinite;
+    }
+    .splash-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #fff;
+      margin-top: 1.5rem;
+      letter-spacing: 0.1em;
+    }
+    .splash-title .accent {
+      color: #00f5ff;
+      text-shadow: 0 0 20px rgba(0, 245, 255, 0.5);
+    }
+    .splash-loader {
+      margin-top: 2rem;
+      display: flex;
+      gap: 8px;
+    }
+    .splash-loader span {
+      width: 12px;
+      height: 12px;
+      background: linear-gradient(135deg, #00f5ff, #ff00ff);
+      border-radius: 50%;
+      animation: bounce 1.4s ease-in-out infinite;
+    }
+    .splash-loader span:nth-child(1) { animation-delay: 0s; }
+    .splash-loader span:nth-child(2) { animation-delay: 0.2s; }
+    .splash-loader span:nth-child(3) { animation-delay: 0.4s; }
+    .splash-loader span:nth-child(4) { animation-delay: 0.6s; }
+    .splash-text {
+      margin-top: 1.5rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.6);
+      letter-spacing: 0.05em;
+    }
+    .splash-version {
+      position: absolute;
+      bottom: 2rem;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.3);
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    /* Glow effect around logo */
+    .splash-logo-container {
+      position: relative;
+    }
+    .splash-logo-container::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 150px;
+      height: 150px;
+      background: radial-gradient(circle, rgba(0, 245, 255, 0.3) 0%, transparent 70%);
+      animation: glow 2s ease-in-out infinite;
+    }
+    @keyframes glow {
+      0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+    }
+  </style>
 </head>
 <body>
+  <!-- PWA Splash/Loading Screen -->
+  <div class="splash-screen" id="splashScreen">
+    <div class="splash-logo-container">
+      <img src="/img/logo.svg" alt="WeiRuan Music" class="splash-logo">
+    </div>
+    <h1 class="splash-title">WEIRUAN<span class="accent">MUSIC</span></h1>
+    <div class="splash-loader">
+      <span></span>
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <p class="splash-text">Loading your music experience...</p>
+    <p class="splash-version">v1.0.0</p>
+  </div>
+
   <div class="app-container">
     <!-- Background Effects -->
     <div class="bg-effects">
@@ -853,6 +995,110 @@
   </div>
 
   <div class="notifications" id="notifications"></div>
+
+  <!-- PWA Install Prompt -->
+  <div class="pwa-install-prompt" id="pwaInstallPrompt" style="display:none">
+    <div class="pwa-install-content">
+      <img src="/img/logo.svg" alt="Logo" class="pwa-install-icon">
+      <div class="pwa-install-text">
+        <h3>安装 WeiRuan Music</h3>
+        <p>添加到主屏幕，随时畅听音乐</p>
+      </div>
+      <div class="pwa-install-buttons">
+        <button class="pwa-install-btn" id="pwaInstallBtn">安装</button>
+        <button class="pwa-install-dismiss" id="pwaInstallDismiss">稍后</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/app.js"></script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    // Hide splash screen when app is ready
+    window.addEventListener('load', () => {
+      // Minimum splash screen display time
+      setTimeout(() => {
+        const splash = document.getElementById('splashScreen');
+        if (splash) {
+          splash.classList.add('hidden');
+          // Remove from DOM after animation
+          setTimeout(() => splash.remove(), 500);
+        }
+      }, 1500);
+
+      // Register Service Worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('Service Worker registered:', registration.scope);
+
+            // Check for updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New version available
+                  if (confirm('新版本可用，是否刷新页面？')) {
+                    newWorker.postMessage({ action: 'skipWaiting' });
+                    window.location.reload();
+                  }
+                }
+              });
+            });
+          })
+          .catch((error) => {
+            console.error('Service Worker registration failed:', error);
+          });
+      }
+    });
+
+    // PWA Install Prompt
+    let deferredPrompt;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+
+      // Show install prompt after a delay
+      setTimeout(() => {
+        const prompt = document.getElementById('pwaInstallPrompt');
+        if (prompt && !localStorage.getItem('pwaInstallDismissed')) {
+          prompt.style.display = 'flex';
+        }
+      }, 5000);
+    });
+
+    // Install button click
+    document.getElementById('pwaInstallBtn')?.addEventListener('click', async () => {
+      const prompt = document.getElementById('pwaInstallPrompt');
+      if (prompt) prompt.style.display = 'none';
+
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log('PWA install outcome:', outcome);
+        deferredPrompt = null;
+      }
+    });
+
+    // Dismiss button click
+    document.getElementById('pwaInstallDismiss')?.addEventListener('click', () => {
+      const prompt = document.getElementById('pwaInstallPrompt');
+      if (prompt) prompt.style.display = 'none';
+      localStorage.setItem('pwaInstallDismissed', 'true');
+    });
+
+    // Detect if app is installed
+    window.addEventListener('appinstalled', () => {
+      console.log('PWA installed successfully');
+      deferredPrompt = null;
+    });
+
+    // Check if running as PWA
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      console.log('Running as installed PWA');
+    }
+  </script>
 </body>
 </html>
