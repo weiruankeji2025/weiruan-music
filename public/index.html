@@ -828,6 +828,25 @@
         </div>
         <div class="scan-results" id="scanResults" style="display:none">
           <div class="scan-summary" id="scanSummary"></div>
+          <div class="scan-actions">
+            <button class="btn-scan write" id="writeMetadataBtn" onclick="player.writeAllMetadata()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+              写入封面和歌词到文件
+            </button>
+          </div>
+          <div class="write-progress" id="writeProgress" style="display:none">
+            <div class="scan-progress-bar">
+              <div class="scan-progress-fill" id="writeProgressFill"></div>
+            </div>
+            <div class="scan-status">
+              <span id="writeStatusText">准备写入...</span>
+              <span id="writeCount">0/0</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

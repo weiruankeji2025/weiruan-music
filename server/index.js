@@ -1698,6 +1698,11 @@ async function identifySong(filename, filePath, fileType) {
   const artistFromFile = parsed.artist;
   const songNameFromFile = parsed.songName;
 
+  // 计算完整文件路径
+  const fullPath = fileType === 'library'
+    ? path.join(libraryDir, filePath)
+    : path.join(uploadDir, filePath);
+
   let result = {
     id: fileType === 'library' ? `library:${filePath}` : filePath,
     originalName: filename,
@@ -1705,18 +1710,17 @@ async function identifySong(filename, filePath, fileType) {
     artist: artistFromFile,
     artistInfo: artistFromFile ? findArtistInfo(artistFromFile) : null,
     cover: null,
+    lyrics: null,  // 保存歌词内容
     hasLyrics: false,
     hasEmbeddedCover: false,
+    filePath: fullPath,  // 保存完整文件路径用于写入
+    fileType: fileType,
     identifiedAt: Date.now()
   };
 
   // 检查内嵌封面
   if (musicMetadata) {
     try {
-      const fullPath = fileType === 'library'
-        ? path.join(libraryDir, filePath)
-        : path.join(uploadDir, filePath);
-
       if (fs.existsSync(fullPath)) {
         const metadata = await musicMetadata.parseFile(fullPath);
         if (metadata.common.picture?.[0]) {
@@ -1760,9 +1764,12 @@ async function identifySong(filename, filePath, fileType) {
         }
       }
 
-      // 检查是否有歌词
+      // 获取歌词内容
       const lyrics = await getNeteaseLyrics(song.id);
-      result.hasLyrics = !!lyrics;
+      if (lyrics) {
+        result.hasLyrics = true;
+        result.lyrics = lyrics;  // 保存歌词内容
+      }
       result.neteaseId = song.id;
     }
   } catch (e) {
@@ -1874,6 +1881,101 @@ app.post('/api/metadata/clear', (req, res) => {
   songMetadataCache = {};
   saveMetadataCache(songMetadataCache);
   res.json({ success: true, message: '元数据缓存已清除' });
+});
+
+// 写入元数据到音乐文件（封面和歌词）
+app.post('/api/metadata/write', async (req, res) => {
+  const { filepath, cover, lyrics, title, artist } = req.body;
+
+  if (!filepath) {
+    return res.status(400).json({ success: false, error: '缺少文件路径' });
+  }
+
+  // 确定完整文件路径
+  let fullPath = filepath;
+  if (!path.isAbsolute(filepath)) {
+    // 检查是否是library或uploads中的文件
+    const libraryPath = path.join(__dirname, '../library', filepath);
+    const uploadsPath = path.join(__dirname, '../uploads', filepath);
+    if (fs.existsSync(libraryPath)) {
+      fullPath = libraryPath;
+    } else if (fs.existsSync(uploadsPath)) {
+      fullPath = uploadsPath;
+    } else {
+      return res.status(404).json({ success: false, error: '文件不存在' });
+    }
+  }
+
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).json({ success: false, error: '文件不存在' });
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    const scriptPath = path.join(__dirname, '../scripts/write_metadata.py');
+
+    const params = JSON.stringify({
+      filepath: fullPath,
+      cover: cover || null,
+      lyrics: lyrics || null,
+      title: title || null,
+      artist: artist || null
+    });
+
+    const result = execSync(`python3 "${scriptPath}" '${params.replace(/'/g, "'\\''")}'`, {
+      encoding: 'utf-8',
+      timeout: 30000
+    });
+
+    const jsonResult = JSON.parse(result.trim());
+    res.json(jsonResult);
+  } catch (error) {
+    console.error('写入元数据失败:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 批量写入元数据（使用缓存的扫描结果）
+app.post('/api/metadata/write-all', async (req, res) => {
+  const cache = Object.values(songMetadataCache);
+  if (cache.length === 0) {
+    return res.status(400).json({ success: false, error: '没有可写入的元数据，请先扫描歌曲' });
+  }
+
+  res.json({ success: true, message: '开始写入元数据', total: cache.length });
+
+  // 后台执行写入
+  const { execSync } = require('child_process');
+  const scriptPath = path.join(__dirname, '../scripts/write_metadata.py');
+
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const song of cache) {
+    if (!song.filePath || (!song.cover && !song.lyrics)) continue;
+
+    try {
+      const params = JSON.stringify({
+        filepath: song.filePath,
+        cover: song.cover || null,
+        lyrics: song.lyrics || null,
+        title: song.songName || null,
+        artist: song.artist || null
+      });
+
+      execSync(`python3 "${scriptPath}" '${params.replace(/'/g, "'\\''")}'`, {
+        encoding: 'utf-8',
+        timeout: 30000
+      });
+      successCount++;
+      console.log(`写入成功: ${song.songName}`);
+    } catch (error) {
+      errorCount++;
+      console.error(`写入失败 ${song.songName}:`, error.message);
+    }
+  }
+
+  console.log(`批量写入完成: 成功 ${successCount}, 失败 ${errorCount}`);
 });
 
 // 清理歌曲名称的辅助函数
