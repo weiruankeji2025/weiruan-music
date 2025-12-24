@@ -46,6 +46,39 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
+// 歌曲元数据缓存目录
+const metadataDir = path.join(__dirname, '../metadata');
+if (!fs.existsSync(metadataDir)) {
+  fs.mkdirSync(metadataDir, { recursive: true });
+}
+
+// 元数据缓存文件
+const metadataCacheFile = path.join(metadataDir, 'songs.json');
+
+// 加载元数据缓存
+function loadMetadataCache() {
+  try {
+    if (fs.existsSync(metadataCacheFile)) {
+      return JSON.parse(fs.readFileSync(metadataCacheFile, 'utf8'));
+    }
+  } catch (e) {
+    console.error('加载元数据缓存失败:', e.message);
+  }
+  return {};
+}
+
+// 保存元数据缓存
+function saveMetadataCache(cache) {
+  try {
+    fs.writeFileSync(metadataCacheFile, JSON.stringify(cache, null, 2), 'utf8');
+  } catch (e) {
+    console.error('保存元数据缓存失败:', e.message);
+  }
+}
+
+// 全局元数据缓存
+let songMetadataCache = loadMetadataCache();
+
 // File upload configuration
 const uploadDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -1594,6 +1627,253 @@ app.get('/api/parse/filename', (req, res) => {
     artist: parsed.artist,
     artistInfo: artistInfo
   });
+});
+
+// ==================== 批量识别修正API ====================
+
+// 扫描进度状态
+let scanProgress = {
+  isScanning: false,
+  total: 0,
+  current: 0,
+  currentFile: '',
+  results: [],
+  startTime: null,
+  errors: []
+};
+
+// 获取扫描状态
+app.get('/api/scan/status', (req, res) => {
+  res.json({
+    success: true,
+    ...scanProgress,
+    elapsed: scanProgress.startTime ? Date.now() - scanProgress.startTime : 0
+  });
+});
+
+// 获取已缓存的元数据
+app.get('/api/metadata/list', (req, res) => {
+  res.json({
+    success: true,
+    metadata: songMetadataCache,
+    count: Object.keys(songMetadataCache).length
+  });
+});
+
+// 获取单个歌曲的缓存元数据
+app.get('/api/metadata/:id', (req, res) => {
+  const id = decodeURIComponent(req.params.id);
+  const metadata = songMetadataCache[id];
+  if (metadata) {
+    res.json({ success: true, metadata });
+  } else {
+    res.json({ success: false, error: '未找到元数据' });
+  }
+});
+
+// 手动更新单个歌曲的元数据
+app.post('/api/metadata/update', (req, res) => {
+  const { id, songName, artist, cover, hasLyrics } = req.body;
+  if (!id) {
+    return res.json({ success: false, error: '缺少歌曲ID' });
+  }
+
+  songMetadataCache[id] = {
+    ...songMetadataCache[id],
+    songName: songName || songMetadataCache[id]?.songName,
+    artist: artist || songMetadataCache[id]?.artist,
+    cover: cover || songMetadataCache[id]?.cover,
+    hasLyrics: hasLyrics !== undefined ? hasLyrics : songMetadataCache[id]?.hasLyrics,
+    updatedAt: Date.now(),
+    manual: true
+  };
+
+  saveMetadataCache(songMetadataCache);
+  res.json({ success: true, metadata: songMetadataCache[id] });
+});
+
+// 识别单个歌曲
+async function identifySong(filename, filePath, fileType) {
+  const parsed = parseFileName(filename);
+  const artistFromFile = parsed.artist;
+  const songNameFromFile = parsed.songName;
+
+  let result = {
+    id: fileType === 'library' ? `library:${filePath}` : filePath,
+    originalName: filename,
+    songName: songNameFromFile,
+    artist: artistFromFile,
+    artistInfo: artistFromFile ? findArtistInfo(artistFromFile) : null,
+    cover: null,
+    hasLyrics: false,
+    hasEmbeddedCover: false,
+    identifiedAt: Date.now()
+  };
+
+  // 检查内嵌封面
+  if (musicMetadata) {
+    try {
+      const fullPath = fileType === 'library'
+        ? path.join(libraryDir, filePath)
+        : path.join(uploadDir, filePath);
+
+      if (fs.existsSync(fullPath)) {
+        const metadata = await musicMetadata.parseFile(fullPath);
+        if (metadata.common.picture?.[0]) {
+          result.hasEmbeddedCover = true;
+        }
+        // 从ID3标签获取更准确的信息
+        if (metadata.common.title) {
+          result.songName = metadata.common.title;
+        }
+        if (metadata.common.artist) {
+          result.artist = metadata.common.artist;
+          result.artistInfo = findArtistInfo(metadata.common.artist);
+        }
+        if (metadata.common.album) {
+          result.album = metadata.common.album;
+        }
+      }
+    } catch (e) {
+      console.log(`读取元数据失败: ${filename}`, e.message);
+    }
+  }
+
+  // 从网络获取信息
+  const searchQuery = result.artist
+    ? `${result.artist} ${result.songName}`
+    : result.songName;
+
+  try {
+    const songs = await searchNetease(searchQuery);
+    if (songs.length > 0) {
+      const song = songs[0];
+      const detail = await getNeteaseSongDetail(song.id);
+
+      if (detail) {
+        if (detail.cover && !result.hasEmbeddedCover) {
+          result.cover = detail.cover;
+        }
+        if (detail.artist && !result.artist) {
+          result.artist = detail.artist;
+          result.artistInfo = findArtistInfo(detail.artist);
+        }
+      }
+
+      // 检查是否有歌词
+      const lyrics = await getNeteaseLyrics(song.id);
+      result.hasLyrics = !!lyrics;
+      result.neteaseId = song.id;
+    }
+  } catch (e) {
+    console.log(`网络识别失败: ${filename}`, e.message);
+  }
+
+  return result;
+}
+
+// 开始批量扫描识别
+app.post('/api/scan/start', async (req, res) => {
+  if (scanProgress.isScanning) {
+    return res.json({ success: false, error: '扫描正在进行中' });
+  }
+
+  // 收集所有歌曲文件
+  const allFiles = [];
+
+  // 扫描音乐库
+  if (fs.existsSync(libraryDir)) {
+    const libraryFiles = scanMusicLibrary(libraryDir);
+    libraryFiles.forEach(f => {
+      allFiles.push({
+        filename: f.name,
+        path: f.id.replace('library:', ''),
+        type: 'library'
+      });
+    });
+  }
+
+  // 扫描上传目录
+  if (fs.existsSync(uploadDir)) {
+    const uploadFiles = fs.readdirSync(uploadDir);
+    uploadFiles.forEach(filename => {
+      const ext = path.extname(filename).toLowerCase();
+      if (audioExtensions.includes(ext)) {
+        allFiles.push({
+          filename: filename,
+          path: filename,
+          type: 'upload'
+        });
+      }
+    });
+  }
+
+  if (allFiles.length === 0) {
+    return res.json({ success: false, error: '没有找到音乐文件' });
+  }
+
+  // 初始化扫描状态
+  scanProgress = {
+    isScanning: true,
+    total: allFiles.length,
+    current: 0,
+    currentFile: '',
+    results: [],
+    startTime: Date.now(),
+    errors: []
+  };
+
+  res.json({ success: true, message: '扫描已开始', total: allFiles.length });
+
+  // 后台执行扫描
+  (async () => {
+    for (let i = 0; i < allFiles.length; i++) {
+      const file = allFiles[i];
+      scanProgress.current = i + 1;
+      scanProgress.currentFile = file.filename;
+
+      try {
+        const result = await identifySong(file.filename, file.path, file.type);
+        scanProgress.results.push(result);
+
+        // 保存到缓存
+        songMetadataCache[result.id] = result;
+
+        // 每10首歌保存一次缓存
+        if ((i + 1) % 10 === 0) {
+          saveMetadataCache(songMetadataCache);
+        }
+
+        // 添加延迟避免请求过快
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (e) {
+        scanProgress.errors.push({ file: file.filename, error: e.message });
+      }
+    }
+
+    // 扫描完成
+    saveMetadataCache(songMetadataCache);
+    scanProgress.isScanning = false;
+    console.log(`扫描完成: ${scanProgress.results.length}/${allFiles.length} 首歌曲`);
+  })();
+});
+
+// 停止扫描
+app.post('/api/scan/stop', (req, res) => {
+  if (scanProgress.isScanning) {
+    scanProgress.isScanning = false;
+    saveMetadataCache(songMetadataCache);
+    res.json({ success: true, message: '扫描已停止' });
+  } else {
+    res.json({ success: false, error: '没有正在进行的扫描' });
+  }
+});
+
+// 清除元数据缓存
+app.post('/api/metadata/clear', (req, res) => {
+  songMetadataCache = {};
+  saveMetadataCache(songMetadataCache);
+  res.json({ success: true, message: '元数据缓存已清除' });
 });
 
 // 清理歌曲名称的辅助函数

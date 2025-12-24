@@ -799,6 +799,37 @@
         <div class="shortcut"><kbd>↓</kbd> 减小音量</div>
         <div class="shortcut"><kbd>M</kbd> 静音/取消静音</div>
       </div>
+
+      <!-- 歌曲识别扫描 -->
+      <div class="scan-section">
+        <h4>🔍 歌曲批量识别</h4>
+        <p class="scan-desc">扫描所有歌曲，自动识别歌曲名、歌手、封面和歌词</p>
+        <div class="scan-controls">
+          <button class="btn-scan" id="startScanBtn" onclick="player.startScan()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            开始扫描
+          </button>
+          <button class="btn-scan secondary" id="stopScanBtn" onclick="player.stopScan()" style="display:none">
+            停止扫描
+          </button>
+        </div>
+        <div class="scan-progress" id="scanProgress" style="display:none">
+          <div class="scan-progress-bar">
+            <div class="scan-progress-fill" id="scanProgressFill"></div>
+          </div>
+          <div class="scan-status">
+            <span id="scanStatusText">准备中...</span>
+            <span id="scanCount">0/0</span>
+          </div>
+          <div class="scan-current" id="scanCurrentFile"></div>
+        </div>
+        <div class="scan-results" id="scanResults" style="display:none">
+          <div class="scan-summary" id="scanSummary"></div>
+        </div>
+      </div>
     </div>
   </div>
 
