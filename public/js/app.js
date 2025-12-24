@@ -191,6 +191,10 @@ class MusicPlayer {
     this.audioElement.volume = this.volume;
     this.pendingPlay = false;
 
+    // iOS 后台播放支持
+    this.audioElement.setAttribute('playsinline', '');
+    this.audioElement.setAttribute('webkit-playsinline', '');
+
     this.audioElement.addEventListener('loadedmetadata', () => this.onMetadataLoaded());
     this.audioElement.addEventListener('timeupdate', () => this.onTimeUpdate());
     this.audioElement.addEventListener('ended', () => this.onTrackEnded());
@@ -209,6 +213,121 @@ class MusicPlayer {
     // 预加载下一首的音频元素
     this.preloadAudio = new Audio();
     this.preloadAudio.preload = 'auto';
+
+    // 设置 Media Session API (iOS/Android 锁屏控制)
+    this.setupMediaSession();
+  }
+
+  // Media Session API - 实现 iOS/Android 后台播放和锁屏控制
+  setupMediaSession() {
+    if (!('mediaSession' in navigator)) {
+      console.log('Media Session API not supported');
+      return;
+    }
+
+    // 设置媒体控制按钮处理
+    navigator.mediaSession.setActionHandler('play', () => {
+      this.audioElement.play();
+    });
+
+    navigator.mediaSession.setActionHandler('pause', () => {
+      this.audioElement.pause();
+    });
+
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      this.playPrevious();
+    });
+
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      this.playNext();
+    });
+
+    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      const skipTime = details.seekOffset || 10;
+      this.audioElement.currentTime = Math.max(0, this.audioElement.currentTime - skipTime);
+      this.updatePositionState();
+    });
+
+    navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      const skipTime = details.seekOffset || 10;
+      this.audioElement.currentTime = Math.min(
+        this.audioElement.duration || 0,
+        this.audioElement.currentTime + skipTime
+      );
+      this.updatePositionState();
+    });
+
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime !== undefined) {
+        this.audioElement.currentTime = details.seekTime;
+        this.updatePositionState();
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('stop', () => {
+      this.audioElement.pause();
+      this.audioElement.currentTime = 0;
+    });
+
+    console.log('Media Session API initialized');
+  }
+
+  // 更新锁屏界面的歌曲信息
+  updateMediaSessionMetadata(track) {
+    if (!('mediaSession' in navigator)) return;
+
+    // 获取封面图片
+    let artworkUrl = '/img/default-cover.svg';
+    const albumArt = document.getElementById('albumArt');
+    if (albumArt) {
+      const img = albumArt.querySelector('img');
+      if (img && img.src && !img.src.includes('default-cover')) {
+        artworkUrl = img.src;
+      }
+    }
+
+    // 解析歌曲名和歌手
+    let title = track.name || 'Unknown';
+    let artist = 'Unknown Artist';
+
+    // 尝试从文件名解析
+    const parsed = this.parseFileName(track.name);
+    if (parsed.artist) {
+      artist = parsed.artist;
+      title = parsed.songName;
+    }
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: title,
+      artist: artist,
+      album: 'WeiRuan Music',
+      artwork: [
+        { src: artworkUrl, sizes: '96x96', type: 'image/png' },
+        { src: artworkUrl, sizes: '128x128', type: 'image/png' },
+        { src: artworkUrl, sizes: '192x192', type: 'image/png' },
+        { src: artworkUrl, sizes: '256x256', type: 'image/png' },
+        { src: artworkUrl, sizes: '384x384', type: 'image/png' },
+        { src: artworkUrl, sizes: '512x512', type: 'image/png' }
+      ]
+    });
+
+    console.log('Media Session metadata updated:', title, '-', artist);
+  }
+
+  // 更新播放位置状态（用于锁屏进度条）
+  updatePositionState() {
+    if (!('mediaSession' in navigator)) return;
+    if (!this.audioElement.duration || isNaN(this.audioElement.duration)) return;
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: this.audioElement.duration,
+        playbackRate: this.audioElement.playbackRate,
+        position: this.audioElement.currentTime
+      });
+    } catch (e) {
+      // Ignore errors on some browsers
+    }
   }
 
   initAudioContext() {
@@ -545,6 +664,9 @@ class MusicPlayer {
     this.updateTrackInfo(track);
     this.updatePlaylistUI();
 
+    // 更新锁屏媒体信息 (iOS/Android 后台播放)
+    this.updateMediaSessionMetadata(track);
+
     // 获取封面和歌词
     this.fetchCoverAndLyrics(track);
 
@@ -752,6 +874,11 @@ class MusicPlayer {
     document.getElementById('progressHandle').style.left = `${percent}%`;
     document.getElementById('miniProgressFill').style.width = `${percent}%`;
 
+    // 更新锁屏播放位置 (每5秒更新一次以节省性能)
+    if (Math.floor(current) % 5 === 0) {
+      this.updatePositionState();
+    }
+
     // 更新歌词显示
     if (this.lyricsVisible && this.currentLyrics) {
       this.updateLyricsDisplay();
@@ -774,12 +901,23 @@ class MusicPlayer {
     this.updatePlayButtons(true);
     document.getElementById('albumArt').classList.add('playing');
     this.startVisualizer();
+
+    // 更新媒体会话播放状态 (iOS/Android 锁屏)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+    }
+    this.updatePositionState();
   }
 
   onPause() {
     this.isPlaying = false;
     this.updatePlayButtons(false);
     document.getElementById('albumArt').classList.remove('playing');
+
+    // 更新媒体会话播放状态 (iOS/Android 锁屏)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'paused';
+    }
     this.stopVisualizer();
   }
 
@@ -2745,6 +2883,8 @@ class MusicPlayer {
             track.cover = embeddedUrl;
             coverLoaded = true;
             console.log('使用内嵌封面');
+            // 更新锁屏封面
+            this.updateMediaSessionMetadata(track);
             resolve();
           };
           img.onerror = () => reject();
@@ -2774,6 +2914,8 @@ class MusicPlayer {
             }
             track.cover = proxyUrl;
             this.updatePlaylistUI();
+            // 更新锁屏封面
+            this.updateMediaSessionMetadata(track);
           };
           img.onerror = () => {
             if (!coverLoaded) {
