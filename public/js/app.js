@@ -3279,14 +3279,23 @@ class MusicPlayer {
     startBtn.disabled = true;
     startBtn.style.opacity = '0.5';
     stopBtn.disabled = false;
+    stopBtn.style.display = 'inline-flex';
     stopBtn.style.opacity = '1';
     progressDiv.style.display = 'block';
     resultsDiv.style.display = 'none';
 
+    // 初始化进度显示
     document.getElementById('scanStatusText').textContent = '正在启动扫描...';
     document.getElementById('scanCount').textContent = '0/0';
+    document.getElementById('scanPercent').textContent = '0%';
     document.getElementById('scanProgressFill').style.width = '0%';
     document.getElementById('scanCurrentFile').textContent = '';
+    document.getElementById('scanSuccessCount').textContent = '0';
+    document.getElementById('scanErrorCount').textContent = '0';
+    document.getElementById('scanTimeInfo').textContent = '';
+
+    // 记录开始时间
+    this.scanStartTime = Date.now();
 
     try {
       const response = await fetch('/api/scan/start', {
@@ -3338,27 +3347,73 @@ class MusicPlayer {
       const status = await response.json();
 
       const progressFill = document.getElementById('scanProgressFill');
+      const progressGlow = document.getElementById('scanProgressGlow');
       const statusText = document.getElementById('scanStatusText');
       const countText = document.getElementById('scanCount');
+      const percentText = document.getElementById('scanPercent');
       const currentFile = document.getElementById('scanCurrentFile');
+      const successCount = document.getElementById('scanSuccessCount');
+      const errorCount = document.getElementById('scanErrorCount');
+      const timeInfo = document.getElementById('scanTimeInfo');
 
       // 更新进度条
       const percent = status.total > 0 ? (status.processed / status.total * 100) : 0;
+      const percentRounded = Math.round(percent);
       progressFill.style.width = percent + '%';
+      percentText.textContent = percentRounded + '%';
+
+      // 更新发光位置
+      if (progressGlow) {
+        progressGlow.style.left = `calc(${percent}% - 10px)`;
+      }
 
       // 更新计数
       countText.textContent = `${status.processed}/${status.total}`;
 
+      // 更新成功/失败数
+      const errorNum = status.errors ? status.errors.length : 0;
+      const successNum = status.processed - errorNum;
+      successCount.textContent = successNum;
+      errorCount.textContent = errorNum;
+
+      // 计算预估时间
+      if (status.isScanning && status.processed > 0 && this.scanStartTime) {
+        const elapsed = (Date.now() - this.scanStartTime) / 1000;
+        const avgTime = elapsed / status.processed;
+        const remaining = (status.total - status.processed) * avgTime;
+
+        if (remaining > 60) {
+          timeInfo.textContent = `预计剩余: ${Math.ceil(remaining / 60)} 分钟`;
+        } else if (remaining > 0) {
+          timeInfo.textContent = `预计剩余: ${Math.ceil(remaining)} 秒`;
+        }
+      }
+
       // 更新状态文字
       if (status.isScanning) {
-        statusText.textContent = '正在扫描...';
+        statusText.textContent = '正在识别中...';
         if (status.currentFile) {
-          currentFile.textContent = `当前: ${status.currentFile}`;
+          // 截断长文件名
+          const fileName = status.currentFile.length > 40
+            ? '...' + status.currentFile.slice(-37)
+            : status.currentFile;
+          currentFile.textContent = `🎵 ${fileName}`;
+          currentFile.style.display = 'block';
         }
       } else {
         // 扫描完成
-        statusText.textContent = '扫描完成';
-        currentFile.textContent = '';
+        statusText.textContent = '✓ 扫描完成';
+        currentFile.style.display = 'none';
+
+        // 显示总用时
+        if (this.scanStartTime) {
+          const totalTime = Math.round((Date.now() - this.scanStartTime) / 1000);
+          if (totalTime > 60) {
+            timeInfo.textContent = `总用时: ${Math.floor(totalTime / 60)} 分 ${totalTime % 60} 秒`;
+          } else {
+            timeInfo.textContent = `总用时: ${totalTime} 秒`;
+          }
+        }
 
         // 停止轮询
         if (this.scanPolling) {
