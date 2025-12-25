@@ -1,3 +1,25 @@
+/* ===== 性能优化 ===== */
+* {
+  /* 减少重绘 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 硬件加速 */
+.playlist-item,
+.album-art,
+.visualizer-canvas,
+.progress-fill,
+.mini-progress-fill {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* 图片懒加载优化 */
+img {
+  content-visibility: auto;
+}
+
 /* ===== CSS Variables & Themes ===== */
 :root {
   /* Dark Theme (Default) */
@@ -859,6 +881,103 @@ body {
 .upload-btn.uploading {
   pointer-events: none;
   opacity: 0.6;
+}
+
+/* 分类过滤器 */
+.category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-glass);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.category-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.category-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+.category-btn.active {
+  background: var(--gradient-primary);
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 2px 10px var(--primary-glow);
+}
+
+/* 歌曲分类标签 */
+.track-category {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.65rem;
+  border-radius: 4px;
+  background: var(--bg-glass);
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.track-category:hover {
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+.track-category.pop { background: rgba(236, 72, 153, 0.2); color: #ec4899; }
+.track-category.rock { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.track-category.electronic { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+.track-category.classical { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+.track-category.jazz { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+.track-category.hiphop { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+.track-category.rnb { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
+.track-category.country { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+.track-category.folk { background: rgba(20, 184, 166, 0.2); color: #14b8a6; }
+.track-category.other { background: rgba(107, 114, 128, 0.2); color: #6b7280; }
+
+/* 分类选择下拉菜单 */
+.category-select {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  min-width: 120px;
+  padding: 0.5rem 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+  display: none;
+}
+
+.category-select.show {
+  display: block;
+}
+
+.category-select-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.category-select-item:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
 }
 
 .playlist-stats {

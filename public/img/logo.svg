@@ -1,49 +1,69 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
-  <!-- Red background circle -->
-  <circle cx="100" cy="100" r="100" fill="#e60012"/>
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#ff4757" stroke="#fff" stroke-width="3"/>
 
-  <!-- Ice cream cone -->
-  <g transform="translate(35, 45)">
-    <!-- Cone -->
-    <polygon points="25,70 45,70 35,110" fill="#d4a853" stroke="#8b6914" stroke-width="2"/>
-    <!-- Cone pattern -->
-    <line x1="28" y1="75" x2="35" y2="105" stroke="#8b6914" stroke-width="1"/>
-    <line x1="42" y1="75" x2="35" y2="105" stroke="#8b6914" stroke-width="1"/>
-    <line x1="26" y1="80" x2="44" y2="80" stroke="#8b6914" stroke-width="1"/>
-    <line x1="28" y1="90" x2="42" y2="90" stroke="#8b6914" stroke-width="1"/>
-    <!-- Ice cream swirl -->
-    <ellipse cx="35" cy="55" rx="18" ry="20" fill="white" stroke="#333" stroke-width="2"/>
-    <ellipse cx="35" cy="40" rx="12" ry="14" fill="white" stroke="#333" stroke-width="2"/>
-    <ellipse cx="35" cy="28" rx="8" ry="10" fill="white" stroke="#333" stroke-width="2"/>
+  <!-- Snow King Body -->
+  <ellipse cx="100" cy="145" rx="50" ry="45" fill="white" stroke="#333" stroke-width="2"/>
+
+  <!-- Snow King Head -->
+  <circle cx="100" cy="80" r="45" fill="white" stroke="#333" stroke-width="2"/>
+
+  <!-- Crown - 3 points -->
+  <g transform="translate(60, 20)">
+    <path d="M0,35 L8,12 L20,28 L32,5 L44,28 L56,12 L80,35 L70,35 L70,45 L10,45 L10,35 Z"
+          fill="#ffd700" stroke="#333" stroke-width="2"/>
+    <!-- Crown jewels -->
+    <circle cx="20" cy="30" r="4" fill="#ff4757"/>
+    <circle cx="40" cy="22" r="5" fill="#ff4757"/>
+    <circle cx="60" cy="30" r="4" fill="#ff4757"/>
   </g>
 
-  <!-- Snowman body -->
-  <ellipse cx="115" cy="135" rx="45" ry="40" fill="white" stroke="#333" stroke-width="3"/>
-
-  <!-- Snowman head -->
-  <circle cx="115" cy="80" r="35" fill="white" stroke="#333" stroke-width="3"/>
-
-  <!-- Crown -->
-  <g transform="translate(100, 30)">
-    <path d="M0,25 L5,10 L15,20 L15,5 L30,20 L30,10 L35,25 Z" fill="#ffc107" stroke="#333" stroke-width="2"/>
+  <!-- Left Eye -->
+  <g transform="translate(75, 65)">
+    <ellipse cx="0" cy="0" rx="10" ry="12" fill="#1a1a2e"/>
+    <ellipse cx="3" cy="-3" rx="3" ry="4" fill="white" opacity="0.6"/>
   </g>
 
-  <!-- Left eye -->
-  <ellipse cx="100" cy="75" rx="6" ry="8" fill="#1a237e"/>
+  <!-- Right Eye -->
+  <g transform="translate(125, 65)">
+    <ellipse cx="0" cy="0" rx="10" ry="12" fill="#1a1a2e"/>
+    <ellipse cx="3" cy="-3" rx="3" ry="4" fill="white" opacity="0.6"/>
+  </g>
 
-  <!-- Right eye -->
-  <ellipse cx="130" cy="75" rx="6" ry="8" fill="#1a237e"/>
+  <!-- Rosy Cheeks -->
+  <ellipse cx="65" cy="90" rx="10" ry="7" fill="#ffb8b8" opacity="0.7"/>
+  <ellipse cx="135" cy="90" rx="10" ry="7" fill="#ffb8b8" opacity="0.7"/>
 
-  <!-- Nose (orange carrot) -->
-  <ellipse cx="115" cy="88" rx="6" ry="5" fill="#ff9800"/>
+  <!-- Nose (carrot) -->
+  <ellipse cx="100" cy="85" rx="6" ry="5" fill="#ff9f43"/>
 
-  <!-- Smile -->
-  <path d="M100,100 Q115,115 130,100" fill="none" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+  <!-- Happy Mouth -->
+  <path d="M80,100 Q100,120 120,100" fill="none" stroke="#333" stroke-width="4" stroke-linecap="round"/>
 
   <!-- Tongue -->
-  <ellipse cx="115" cy="108" rx="5" ry="6" fill="#e60012"/>
+  <ellipse cx="100" cy="108" rx="8" ry="6" fill="#ff4757"/>
 
-  <!-- Arms/body outline -->
-  <path d="M75,120 Q70,130 75,145" fill="none" stroke="#333" stroke-width="3"/>
-  <path d="M155,120 Q160,130 155,145" fill="none" stroke="#333" stroke-width="3"/>
+  <!-- Scarf -->
+  <path d="M50,115 Q100,135 150,115" fill="none" stroke="#ff4757" stroke-width="12" stroke-linecap="round"/>
+  <ellipse cx="70" cy="140" rx="10" ry="20" fill="#ff4757" stroke="#333" stroke-width="1"/>
+  <ellipse cx="85" cy="145" rx="8" ry="18" fill="#ff4757" stroke="#333" stroke-width="1"/>
+
+  <!-- Arms -->
+  <line x1="55" y1="140" x2="30" y2="120" stroke="#8b6914" stroke-width="6" stroke-linecap="round"/>
+  <line x1="145" y1="140" x2="170" y2="120" stroke="#8b6914" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Ice cream in hand -->
+  <g transform="translate(155, 85)">
+    <!-- Cone -->
+    <polygon points="0,20 20,20 10,45" fill="#d4a853" stroke="#8b6914" stroke-width="1"/>
+    <!-- Ice cream -->
+    <circle cx="10" cy="12" r="12" fill="white" stroke="#333" stroke-width="1"/>
+    <circle cx="10" cy="2" r="8" fill="#87ceeb" stroke="#333" stroke-width="1"/>
+    <circle cx="10" cy="-5" r="5" fill="#ffb8b8" stroke="#333" stroke-width="1"/>
+  </g>
+
+  <!-- Music notes around -->
+  <text x="25" y="60" font-size="20" fill="white" opacity="0.8">♪</text>
+  <text x="165" y="50" font-size="16" fill="white" opacity="0.8">♫</text>
+  <text x="20" y="170" font-size="14" fill="white" opacity="0.6">♪</text>
 </svg>

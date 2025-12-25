@@ -69,6 +69,23 @@ class MusicPlayer {
     // 播放次数统计
     this.playCounts = {};
 
+    // 分类系统
+    this.categories = {
+      all: '全部',
+      pop: '流行',
+      rock: '摇滚',
+      electronic: '电子',
+      classical: '古典',
+      jazz: '爵士',
+      hiphop: '嘻哈',
+      rnb: 'R&B',
+      country: '乡村',
+      folk: '民谣',
+      other: '其他'
+    };
+    this.songCategories = {}; // 存储每首歌的分类 { songId: 'category' }
+    this.currentCategory = 'all'; // 当前筛选的分类
+
     // 歌词
     this.currentLyrics = null;
     this.lyricsVisible = false;
@@ -135,6 +152,12 @@ class MusicPlayer {
       this.playCounts = JSON.parse(savedPlayCounts);
     }
 
+    // 加载歌曲分类
+    const savedCategories = localStorage.getItem('weiruan-music-categories');
+    if (savedCategories) {
+      this.songCategories = JSON.parse(savedCategories);
+    }
+
     // 从服务器加载歌单（基于IP地址）
     this.loadPlaylistFromServer();
   }
@@ -143,6 +166,7 @@ class MusicPlayer {
     localStorage.setItem('weiruan-music-settings', JSON.stringify(this.settings));
     localStorage.setItem('weiruan-music-volume', this.volume.toString());
     localStorage.setItem('weiruan-music-playcounts', JSON.stringify(this.playCounts));
+    localStorage.setItem('weiruan-music-categories', JSON.stringify(this.songCategories));
   }
 
   // 从服务器加载歌单
@@ -699,6 +723,11 @@ class MusicPlayer {
       this.saveSettings();
     });
 
+    // 分类过滤器
+    document.querySelectorAll('.category-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.filterByCategory(btn.dataset.category));
+    });
+
     // EQ presets
     document.querySelectorAll('.preset-btn').forEach(btn => {
       btn.addEventListener('click', () => this.applyEQPreset(btn.dataset.preset));
@@ -1141,12 +1170,22 @@ class MusicPlayer {
     // 确保有有效的时长
     if (!duration || isNaN(duration)) return;
 
+    // 性能优化：减少 DOM 更新频率（每100ms更新一次）
+    const now = Date.now();
+    if (this._lastTimeUpdate && now - this._lastTimeUpdate < 100) {
+      return;
+    }
+    this._lastTimeUpdate = now;
+
     const percent = (current / duration) * 100;
 
-    document.getElementById('currentTime').textContent = this.formatTime(current);
-    document.getElementById('progressFill').style.width = `${percent}%`;
-    document.getElementById('progressHandle').style.left = `${percent}%`;
-    document.getElementById('miniProgressFill').style.width = `${percent}%`;
+    // 批量 DOM 更新
+    requestAnimationFrame(() => {
+      document.getElementById('currentTime').textContent = this.formatTime(current);
+      document.getElementById('progressFill').style.width = `${percent}%`;
+      document.getElementById('progressHandle').style.left = `${percent}%`;
+      document.getElementById('miniProgressFill').style.width = `${percent}%`;
+    });
 
     // 更新锁屏播放位置 (每5秒更新一次以节省性能)
     if (Math.floor(current) % 5 === 0) {
@@ -1439,7 +1478,12 @@ class MusicPlayer {
     const trackCount = document.getElementById('trackCount');
     const totalDuration = document.getElementById('totalDuration');
 
-    trackCount.textContent = `${this.playlist.length} 首曲目`;
+    // 根据分类过滤播放列表
+    const filteredPlaylist = this.currentCategory === 'all'
+      ? this.playlist
+      : this.playlist.filter(track => this.songCategories[track.id] === this.currentCategory);
+
+    trackCount.textContent = `${filteredPlaylist.length} / ${this.playlist.length} 首曲目`;
 
     if (this.playlist.length === 0) {
       container.innerHTML = `
@@ -1458,25 +1502,47 @@ class MusicPlayer {
       return;
     }
 
-    container.innerHTML = this.playlist.map((track, index) => {
+    if (filteredPlaylist.length === 0) {
+      container.innerHTML = `
+        <div class="empty-playlist">
+          <div class="empty-icon">
+            <svg viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+              <path d="M30 35 L30 65 L50 50 Z" fill="currentColor" opacity="0.3"/>
+            </svg>
+          </div>
+          <p>该分类下暂无歌曲</p>
+          <span>点击歌曲的分类标签来设置分类</span>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = filteredPlaylist.map((track) => {
+      const originalIndex = this.playlist.findIndex(t => t.id === track.id);
       const playCount = this.playCounts[track.id] || 0;
+      const category = this.songCategories[track.id] || 'other';
+      const categoryName = this.categories[category] || '其他';
       return `
-      <div class="playlist-item ${index === this.currentIndex ? 'active playing' : ''}" data-index="${index}">
-        <span class="item-number">${index + 1}</span>
+      <div class="playlist-item ${originalIndex === this.currentIndex ? 'active playing' : ''}" data-index="${originalIndex}" data-id="${track.id}">
+        <span class="item-number">${originalIndex + 1}</span>
         <div class="item-art">
-          ${track.cover ? `<img src="${track.cover}" alt="cover">` : `
+          ${track.cover ? `<img src="${track.cover}" alt="cover" loading="lazy" decoding="async">` : `
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
           </svg>`}
         </div>
         <div class="item-info">
-          <div class="item-title">${track.name.replace(/\.[^/.]+$/, '')}</div>
+          <div class="item-title">
+            ${track.name.replace(/\.[^/.]+$/, '')}
+            <span class="track-category ${category}" data-id="${track.id}" title="点击修改分类">${categoryName}</span>
+          </div>
           <div class="item-artist">${track.artist || '未知'}</div>
         </div>
         ${playCount > 0 ? `<span class="item-plays"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>${playCount}</span>` : ''}
         <span class="item-duration">${track.duration || '--:--'}</span>
         <div class="item-actions">
-          <button class="btn-item" onclick="player.removeTrack(${index})" title="移除">
+          <button class="btn-item" onclick="player.removeTrack(${originalIndex})" title="移除">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -1489,11 +1555,87 @@ class MusicPlayer {
     // Add click handlers
     container.querySelectorAll('.playlist-item').forEach(item => {
       item.addEventListener('click', (e) => {
-        if (!e.target.closest('.btn-item')) {
+        if (!e.target.closest('.btn-item') && !e.target.closest('.track-category')) {
           this.playTrack(parseInt(item.dataset.index));
         }
       });
     });
+
+    // Add category click handlers
+    container.querySelectorAll('.track-category').forEach(tag => {
+      tag.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showCategorySelector(tag.dataset.id, tag);
+      });
+    });
+  }
+
+  // 分类过滤
+  filterByCategory(category) {
+    this.currentCategory = category;
+
+    // 更新按钮状态
+    document.querySelectorAll('.category-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.category === category);
+    });
+
+    this.updatePlaylistUI();
+  }
+
+  // 显示分类选择器
+  showCategorySelector(trackId, element) {
+    // 移除已存在的选择器
+    document.querySelectorAll('.category-select').forEach(s => s.remove());
+
+    const selector = document.createElement('div');
+    selector.className = 'category-select show';
+    selector.innerHTML = Object.entries(this.categories)
+      .filter(([key]) => key !== 'all')
+      .map(([key, name]) => `
+        <div class="category-select-item" data-category="${key}">${name}</div>
+      `).join('');
+
+    // 定位
+    const rect = element.getBoundingClientRect();
+    selector.style.position = 'fixed';
+    selector.style.left = `${rect.left}px`;
+    selector.style.top = `${rect.bottom + 5}px`;
+
+    document.body.appendChild(selector);
+
+    // 点击选择分类
+    selector.querySelectorAll('.category-select-item').forEach(item => {
+      item.addEventListener('click', () => {
+        this.setSongCategory(trackId, item.dataset.category);
+        selector.remove();
+      });
+    });
+
+    // 点击外部关闭
+    setTimeout(() => {
+      document.addEventListener('click', function closeSelector(e) {
+        if (!selector.contains(e.target)) {
+          selector.remove();
+          document.removeEventListener('click', closeSelector);
+        }
+      });
+    }, 0);
+  }
+
+  // 设置歌曲分类
+  setSongCategory(trackId, category) {
+    this.songCategories[trackId] = category;
+    this.saveSettings();
+    this.updatePlaylistUI();
+    this.showNotification(`已将歌曲分类设为: ${this.categories[category]}`, 'info');
+  }
+
+  // 获取当前分类的播放列表（用于播放）
+  getFilteredPlaylist() {
+    if (this.currentCategory === 'all') {
+      return this.playlist;
+    }
+    return this.playlist.filter(track => this.songCategories[track.id] === this.currentCategory);
   }
 
   // WebDAV
