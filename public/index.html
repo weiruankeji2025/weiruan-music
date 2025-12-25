@@ -974,14 +974,37 @@
           </button>
         </div>
         <div class="scan-progress" id="scanProgress" style="display:none">
-          <div class="scan-progress-bar">
-            <div class="scan-progress-fill" id="scanProgressFill"></div>
+          <div class="scan-progress-header">
+            <span class="scan-progress-title">正在识别歌曲</span>
+            <span class="scan-progress-percent" id="scanPercent">0%</span>
           </div>
-          <div class="scan-status">
-            <span id="scanStatusText">准备中...</span>
-            <span id="scanCount">0/0</span>
+          <div class="scan-progress-bar-container">
+            <div class="scan-progress-bar">
+              <div class="scan-progress-fill" id="scanProgressFill"></div>
+              <div class="scan-progress-glow" id="scanProgressGlow"></div>
+            </div>
           </div>
-          <div class="scan-current" id="scanCurrentFile"></div>
+          <div class="scan-progress-details">
+            <div class="scan-progress-stats">
+              <span class="scan-stat">
+                <span class="scan-stat-icon">📁</span>
+                <span id="scanCount">0/0</span> 首
+              </span>
+              <span class="scan-stat">
+                <span class="scan-stat-icon">✓</span>
+                <span id="scanSuccessCount">0</span> 成功
+              </span>
+              <span class="scan-stat">
+                <span class="scan-stat-icon">✗</span>
+                <span id="scanErrorCount">0</span> 失败
+              </span>
+            </div>
+            <div class="scan-status">
+              <span id="scanStatusText">准备中...</span>
+            </div>
+            <div class="scan-current" id="scanCurrentFile"></div>
+            <div class="scan-time" id="scanTimeInfo"></div>
+          </div>
         </div>
         <div class="scan-results" id="scanResults" style="display:none">
           <div class="scan-summary" id="scanSummary"></div>
