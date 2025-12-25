@@ -223,7 +223,9 @@ app.get('/api/cover/embedded/:filename', async (req, res) => {
 
 // Stream local music files with range support (iOS optimized)
 app.get('/api/music/:filename', (req, res) => {
-  const filePath = path.join(uploadDir, req.params.filename);
+  // URL 解码文件名（处理特殊字符）
+  const filename = decodeURIComponent(req.params.filename);
+  const filePath = path.join(uploadDir, filename);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
@@ -232,7 +234,7 @@ app.get('/api/music/:filename', (req, res) => {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
-  const ext = path.extname(req.params.filename).toLowerCase();
+  const ext = path.extname(filename).toLowerCase();
   const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
   // iOS Safari 优化的响应头
@@ -296,7 +298,7 @@ app.get('/api/files', (req, res) => {
       return {
         id: filename,
         name: originalName,
-        path: `/api/music/${filename}`,
+        path: `/api/music/${encodeURIComponent(filename)}`,
         size: stat.size,
         type: 'local'
       };
