@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -7,6 +8,18 @@ const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Gzip 压缩 - 提升传输速度（不压缩音频文件）
+app.use(compression({
+  filter: (req, res) => {
+    // 不压缩音频文件，它们已经是压缩格式
+    if (req.path.includes('/api/music/') || req.path.includes('/api/local/stream')) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+  level: 6 // 压缩级别 1-9
+}));
 
 // WebDAV client loader (ESM module)
 let createClient = null;
@@ -44,7 +57,23 @@ app.use(cors({
 }));
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
+
+// 静态文件服务 - 添加缓存头优化加载速度
+app.use(express.static(path.join(__dirname, '../public'), {
+  maxAge: '1d', // 缓存1天
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // JS/CSS 文件缓存更长时间
+    if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'public, max-age=604800'); // 7天
+    }
+    // 图片缓存更长时间
+    if (/\.(png|jpg|jpeg|gif|svg|ico)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30天
+    }
+  }
+}));
 
 // 歌曲元数据缓存目录
 const metadataDir = path.join(__dirname, '../metadata');
@@ -192,7 +221,7 @@ app.get('/api/cover/embedded/:filename', async (req, res) => {
   }
 });
 
-// Stream local music files with range support (iOS compatible)
+// Stream local music files with range support (iOS optimized)
 app.get('/api/music/:filename', (req, res) => {
   const filePath = path.join(uploadDir, req.params.filename);
 
@@ -206,21 +235,34 @@ app.get('/api/music/:filename', (req, res) => {
   const ext = path.extname(req.params.filename).toLowerCase();
   const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
-  // iOS Safari requires proper CORS headers for audio playback
+  // iOS Safari 优化的响应头
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Range',
     'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
-    'Cache-Control': 'public, max-age=86400'
+    'Cache-Control': 'public, max-age=86400',
+    'X-Content-Type-Options': 'nosniff'
+  };
+
+  // 流配置 - 优化 iOS 播放
+  const streamOptions = {
+    highWaterMark: 64 * 1024 // 64KB 块大小，平衡速度和内存
   };
 
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    // iOS 首次请求优化：如果没有指定结束位置，返回较小的初始块以快速开始播放
+    let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    // 首次请求（从0开始且未指定结束）时，限制初始块大小以加快播放开始
+    if (start === 0 && !parts[1] && fileSize > 512 * 1024) {
+      end = Math.min(512 * 1024 - 1, fileSize - 1); // 首次最多512KB
+    }
+
     const chunksize = (end - start) + 1;
-    const file = fs.createReadStream(filePath, { start, end });
+    const file = fs.createReadStream(filePath, { start, end, ...streamOptions });
 
     res.writeHead(206, {
       ...corsHeaders,
@@ -231,13 +273,14 @@ app.get('/api/music/:filename', (req, res) => {
     });
     file.pipe(res);
   } else {
+    // 无 Range 请求时，发送整个文件但用流式传输
     res.writeHead(200, {
       ...corsHeaders,
       'Content-Length': fileSize,
       'Content-Type': contentType,
       'Accept-Ranges': 'bytes'
     });
-    fs.createReadStream(filePath).pipe(res);
+    fs.createReadStream(filePath, streamOptions).pipe(res);
   }
 });
 
@@ -1347,16 +1390,23 @@ app.get('/api/local/stream', async (req, res) => {
     }
 
     const stats = await fs.promises.stat(filePath);
+    const fileSize = stats.size;
     const ext = path.extname(filePath).toLowerCase();
     const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
-    // iOS Safari requires proper CORS headers for audio playback
+    // iOS Safari 优化的响应头
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Access-Control-Allow-Headers': 'Range',
       'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
-      'Cache-Control': 'public, max-age=86400'
+      'Cache-Control': 'public, max-age=86400',
+      'X-Content-Type-Options': 'nosniff'
+    };
+
+    // 流配置 - 优化 iOS 播放
+    const streamOptions = {
+      highWaterMark: 64 * 1024 // 64KB 块大小
     };
 
     const range = req.headers.range;
@@ -1364,28 +1414,34 @@ app.get('/api/local/stream', async (req, res) => {
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      // iOS 首次请求优化
+      if (start === 0 && !parts[1] && fileSize > 512 * 1024) {
+        end = Math.min(512 * 1024 - 1, fileSize - 1);
+      }
+
       const chunkSize = (end - start) + 1;
 
       res.writeHead(206, {
         ...corsHeaders,
-        'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
         'Content-Type': contentType,
       });
 
-      const stream = fs.createReadStream(filePath, { start, end });
+      const stream = fs.createReadStream(filePath, { start, end, ...streamOptions });
       stream.pipe(res);
     } else {
       res.writeHead(200, {
         ...corsHeaders,
-        'Content-Length': stats.size,
+        'Content-Length': fileSize,
         'Content-Type': contentType,
         'Accept-Ranges': 'bytes',
       });
 
-      const stream = fs.createReadStream(filePath);
+      const stream = fs.createReadStream(filePath, streamOptions);
       stream.pipe(res);
     }
   } catch (error) {
