@@ -3556,8 +3556,9 @@ class MusicPlayer {
       const errorCount = document.getElementById('scanErrorCount');
       const timeInfo = document.getElementById('scanTimeInfo');
 
-      // 更新进度条
-      const percent = status.total > 0 ? (status.processed / status.total * 100) : 0;
+      // 更新进度条 (服务器返回current，不是processed)
+      const processed = status.current || 0;
+      const percent = status.total > 0 ? (processed / status.total * 100) : 0;
       const percentRounded = Math.round(percent);
       progressFill.style.width = percent + '%';
       percentText.textContent = percentRounded + '%';
@@ -3568,19 +3569,19 @@ class MusicPlayer {
       }
 
       // 更新计数
-      countText.textContent = `${status.processed}/${status.total}`;
+      countText.textContent = `${processed}/${status.total}`;
 
       // 更新成功/失败数
       const errorNum = status.errors ? status.errors.length : 0;
-      const successNum = status.processed - errorNum;
+      const successNum = processed - errorNum;
       successCount.textContent = successNum;
       errorCount.textContent = errorNum;
 
       // 计算预估时间
-      if (status.isScanning && status.processed > 0 && this.scanStartTime) {
+      if (status.isScanning && processed > 0 && this.scanStartTime) {
         const elapsed = (Date.now() - this.scanStartTime) / 1000;
-        const avgTime = elapsed / status.processed;
-        const remaining = (status.total - status.processed) * avgTime;
+        const avgTime = elapsed / processed;
+        const remaining = (status.total - processed) * avgTime;
 
         if (remaining > 60) {
           timeInfo.textContent = `预计剩余: ${Math.ceil(remaining / 60)} 分钟`;
@@ -3643,16 +3644,18 @@ class MusicPlayer {
 
     resultsDiv.style.display = 'block';
 
-    let html = `<div class="scan-summary-item success">✓ 成功识别: ${status.processed - status.errors.length} 首</div>`;
+    const processed = status.current || 0;
+    const errorNum = status.errors ? status.errors.length : 0;
+    let html = `<div class="scan-summary-item success">✓ 成功识别: ${processed - errorNum} 首</div>`;
 
-    if (status.errors.length > 0) {
-      html += `<div class="scan-summary-item error">✗ 识别失败: ${status.errors.length} 首</div>`;
+    if (errorNum > 0) {
+      html += `<div class="scan-summary-item error">✗ 识别失败: ${errorNum} 首</div>`;
       html += '<div class="scan-error-list">';
-      status.errors.slice(0, 10).forEach(err => {
+      (status.errors || []).slice(0, 10).forEach(err => {
         html += `<div class="scan-error-item">${err.file}: ${err.error}</div>`;
       });
-      if (status.errors.length > 10) {
-        html += `<div class="scan-error-item">...还有 ${status.errors.length - 10} 个错误</div>`;
+      if (errorNum > 10) {
+        html += `<div class="scan-error-item">...还有 ${errorNum - 10} 个错误</div>`;
       }
       html += '</div>';
     }
