@@ -186,15 +186,20 @@ class MusicPlayer {
   }
 
   setupAudioElement() {
-    this.audioElement.crossOrigin = 'anonymous';
+    // iOS 兼容性：不设置 crossOrigin，避免不必要的 CORS 问题
+    // 如果需要跨域资源，服务端已配置 CORS 头
     this.audioElement.preload = 'auto';
     this.audioElement.volume = this.volume;
     this.pendingPlay = false;
 
-    // iOS 后台播放支持 - 关键属性
+    // iOS 播放支持 - 关键属性
     this.audioElement.setAttribute('playsinline', '');
     this.audioElement.setAttribute('webkit-playsinline', '');
     this.audioElement.setAttribute('x-webkit-airplay', 'allow');
+
+    // 检测是否是 iOS
+    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
     this.audioElement.addEventListener('loadedmetadata', () => this.onMetadataLoaded());
     this.audioElement.addEventListener('timeupdate', () => this.onTimeUpdate());
@@ -206,8 +211,19 @@ class MusicPlayer {
     // 优化播放延迟：数据可播放时立即开始
     this.audioElement.addEventListener('canplay', () => {
       if (this.pendingPlay) {
-        this.audioElement.play().catch(() => {});
+        this.audioElement.play().catch((e) => {
+          console.log('Canplay auto-play failed:', e);
+        });
         this.pendingPlay = false;
+      }
+    });
+
+    // iOS 特殊处理：loadeddata 事件更可靠
+    this.audioElement.addEventListener('loadeddata', () => {
+      if (this.isIOS && this.pendingPlay) {
+        this.audioElement.play().catch((e) => {
+          console.log('iOS loadeddata play failed:', e);
+        });
       }
     });
 
@@ -224,9 +240,7 @@ class MusicPlayer {
 
   // iOS 后台播放增强处理
   setupiOSBackgroundAudio() {
-    // 检测是否是 iOS
-    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // isIOS 已在 setupAudioElement 中检测
 
     // 页面可见性变化处理 - 恢复播放
     document.addEventListener('visibilitychange', () => {
@@ -562,35 +576,47 @@ class MusicPlayer {
   initAudioContext() {
     if (this.audioContext) return;
 
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    this.sourceNode = this.audioContext.createMediaElementSource(this.audioElement);
-    this.gainNode = this.audioContext.createGain();
-    this.analyserNode = this.audioContext.createAnalyser();
+    try {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-    this.analyserNode.fftSize = 256;
-    this.analyserNode.smoothingTimeConstant = 0.8;
+      // iOS: 确保 AudioContext 处于正确状态
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
 
-    // Create EQ filters
-    const frequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-    frequencies.forEach((freq, i) => {
-      const filter = this.audioContext.createBiquadFilter();
-      filter.type = 'peaking';
-      filter.frequency.value = freq;
-      filter.Q.value = 1;
-      filter.gain.value = 0;
-      this.eqFilters.push(filter);
-    });
+      this.sourceNode = this.audioContext.createMediaElementSource(this.audioElement);
+      this.gainNode = this.audioContext.createGain();
+      this.analyserNode = this.audioContext.createAnalyser();
 
-    // Connect nodes
-    this.sourceNode.connect(this.eqFilters[0]);
-    for (let i = 0; i < this.eqFilters.length - 1; i++) {
-      this.eqFilters[i].connect(this.eqFilters[i + 1]);
+      this.analyserNode.fftSize = 256;
+      this.analyserNode.smoothingTimeConstant = 0.8;
+
+      // Create EQ filters
+      const frequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+      frequencies.forEach((freq, i) => {
+        const filter = this.audioContext.createBiquadFilter();
+        filter.type = 'peaking';
+        filter.frequency.value = freq;
+        filter.Q.value = 1;
+        filter.gain.value = 0;
+        this.eqFilters.push(filter);
+      });
+
+      // Connect nodes
+      this.sourceNode.connect(this.eqFilters[0]);
+      for (let i = 0; i < this.eqFilters.length - 1; i++) {
+        this.eqFilters[i].connect(this.eqFilters[i + 1]);
+      }
+      this.eqFilters[this.eqFilters.length - 1].connect(this.gainNode);
+      this.gainNode.connect(this.analyserNode);
+      this.analyserNode.connect(this.audioContext.destination);
+
+      this.gainNode.gain.value = this.volume;
+      this.audioContextInitialized = true;
+    } catch (e) {
+      console.error('AudioContext initialization failed:', e);
+      this.audioContextInitialized = false;
     }
-    this.eqFilters[this.eqFilters.length - 1].connect(this.gainNode);
-    this.gainNode.connect(this.analyserNode);
-    this.analyserNode.connect(this.audioContext.destination);
-
-    this.gainNode.gain.value = this.volume;
   }
 
   setupEventListeners() {
@@ -844,16 +870,25 @@ class MusicPlayer {
     document.querySelectorAll('.tab-content').forEach(content => {
       content.classList.toggle('active', content.id === `${tabId}-tab`);
     });
+
+    // iOS: 在用户切换到均衡器标签时初始化 AudioContext
+    // 因为这是用户明确的交互，符合 iOS 的自动播放策略
+    if (tabId === 'equalizer' && !this.audioContext) {
+      this.initAudioContext();
+    }
   }
 
   // Playback Controls
   togglePlay() {
-    if (!this.audioContext) {
+    // iOS: 延迟初始化 AudioContext，避免影响基础播放
+    // 只在非 iOS 设备或已初始化时才初始化
+    if (!this.isIOS && !this.audioContext) {
       this.initAudioContext();
     }
 
-    if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+    // 恢复 AudioContext（如果存在）
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(() => {});
     }
 
     if (this.isPlaying) {
@@ -862,7 +897,9 @@ class MusicPlayer {
       if (this.currentIndex === -1 && this.playlist.length > 0) {
         this.playTrack(0);
       } else {
-        this.audioElement.play();
+        this.audioElement.play().catch(e => {
+          console.log('Play failed:', e);
+        });
       }
     }
   }
@@ -870,7 +907,9 @@ class MusicPlayer {
   playTrack(index) {
     if (index < 0 || index >= this.playlist.length) return;
 
-    if (!this.audioContext) {
+    // iOS: 延迟初始化 AudioContext，优先保证播放
+    // 只在用户明确使用均衡器/可视化时才初始化
+    if (!this.isIOS && !this.audioContext) {
       this.initAudioContext();
     }
 
@@ -885,8 +924,14 @@ class MusicPlayer {
     this.pendingPlay = true;
     this.audioElement.src = track.path;
 
+    // iOS: 需要先 load() 再 play()
+    if (this.isIOS) {
+      this.audioElement.load();
+    }
+
     // 尝试立即播放，如果失败会在canplay事件中重试
-    this.audioElement.play().catch(() => {
+    this.audioElement.play().catch((e) => {
+      console.log('Initial play failed, waiting for canplay:', e);
       // 播放失败，等待canplay事件
     });
 
@@ -1588,6 +1633,11 @@ class MusicPlayer {
     const values = this.eqPresets[preset];
     if (!values) return;
 
+    // 确保 AudioContext 已初始化（用于均衡器）
+    if (!this.audioContext) {
+      this.initAudioContext();
+    }
+
     document.querySelectorAll('.preset-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.preset === preset);
     });
@@ -1601,6 +1651,10 @@ class MusicPlayer {
   }
 
   setEQBand(index, value) {
+    // 确保 AudioContext 已初始化
+    if (!this.audioContext) {
+      this.initAudioContext();
+    }
     if (this.eqFilters[index]) {
       this.eqFilters[index].gain.value = value;
     }
@@ -1634,6 +1688,10 @@ class MusicPlayer {
 
   startVisualizer() {
     if (this.animationId) return;
+    // 确保 AudioContext 已初始化（用于可视化）
+    if (!this.audioContext) {
+      this.initAudioContext();
+    }
     this.drawVisualizer();
   }
 
