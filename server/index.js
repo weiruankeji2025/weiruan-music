@@ -192,7 +192,7 @@ app.get('/api/cover/embedded/:filename', async (req, res) => {
   }
 });
 
-// Stream local music files with range support
+// Stream local music files with range support (iOS compatible)
 app.get('/api/music/:filename', (req, res) => {
   const filePath = path.join(uploadDir, req.params.filename);
 
@@ -206,6 +206,15 @@ app.get('/api/music/:filename', (req, res) => {
   const ext = path.extname(req.params.filename).toLowerCase();
   const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
+  // iOS Safari requires proper CORS headers for audio playback
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Range',
+    'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+    'Cache-Control': 'public, max-age=86400'
+  };
+
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
@@ -214,6 +223,7 @@ app.get('/api/music/:filename', (req, res) => {
     const file = fs.createReadStream(filePath, { start, end });
 
     res.writeHead(206, {
+      ...corsHeaders,
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
@@ -222,6 +232,7 @@ app.get('/api/music/:filename', (req, res) => {
     file.pipe(res);
   } else {
     res.writeHead(200, {
+      ...corsHeaders,
       'Content-Length': fileSize,
       'Content-Type': contentType,
       'Accept-Ranges': 'bytes'
@@ -1339,6 +1350,15 @@ app.get('/api/local/stream', async (req, res) => {
     const ext = path.extname(filePath).toLowerCase();
     const contentType = audioMimeTypes[ext] || 'audio/mpeg';
 
+    // iOS Safari requires proper CORS headers for audio playback
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range',
+      'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+      'Cache-Control': 'public, max-age=86400'
+    };
+
     const range = req.headers.range;
 
     if (range) {
@@ -1348,6 +1368,7 @@ app.get('/api/local/stream', async (req, res) => {
       const chunkSize = (end - start) + 1;
 
       res.writeHead(206, {
+        ...corsHeaders,
         'Content-Range': `bytes ${start}-${end}/${stats.size}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
@@ -1358,6 +1379,7 @@ app.get('/api/local/stream', async (req, res) => {
       stream.pipe(res);
     } else {
       res.writeHead(200, {
+        ...corsHeaders,
         'Content-Length': stats.size,
         'Content-Type': contentType,
         'Accept-Ranges': 'bytes',
