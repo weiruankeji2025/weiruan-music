@@ -242,6 +242,11 @@ class MusicPlayer {
         if (this.audioContext && this.audioContext.state === 'suspended') {
           this.audioContext.resume();
         }
+      } else if (document.visibilityState === 'hidden') {
+        // 页面隐藏时，尝试保持播放
+        if (this.isPlaying && this.isIOS) {
+          this.keepAudioAlive();
+        }
       }
     });
 
@@ -249,6 +254,16 @@ class MusicPlayer {
     this.audioElement.addEventListener('pause', () => {
       // 记录是否是用户主动暂停
       this.userPaused = !this.isPlaying;
+
+      // iOS: 如果不是用户暂停，尝试恢复播放
+      if (this.isIOS && this.isPlaying && !this.userPaused) {
+        setTimeout(() => {
+          if (this.isPlaying && this.audioElement.paused) {
+            console.log('iOS auto-pause detected, trying to resume...');
+            this.audioElement.play().catch(() => {});
+          }
+        }, 100);
+      }
     });
 
     // 监听 iOS 音频会话中断
@@ -322,6 +337,78 @@ class MusicPlayer {
   deactivateSilentAudio() {
     if (this.silentAudio) {
       this.silentAudio.pause();
+    }
+  }
+
+  // 保持音频活跃（iOS 后台播放关键）
+  keepAudioAlive() {
+    if (!this.isIOS) return;
+
+    console.log('Keeping audio alive for background playback...');
+
+    // 1. 确保静音音频在播放
+    this.activateSilentAudio();
+
+    // 2. 定期检查并恢复主音频播放
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+    }
+
+    this.keepAliveInterval = setInterval(() => {
+      if (this.isPlaying && this.audioElement.paused) {
+        console.log('Audio paused unexpectedly, resuming...');
+        this.audioElement.play().catch(() => {});
+      }
+
+      // 保持 AudioContext 活跃
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
+      }
+
+      // 更新 Media Session 位置状态以保持活跃
+      this.updatePositionState();
+    }, 1000);
+
+    // 3. 使用 Web Audio API 生成微弱信号保持活跃
+    this.startSilentOscillator();
+  }
+
+  // 使用 Web Audio API 生成静音信号
+  startSilentOscillator() {
+    if (!this.audioContext) return;
+
+    try {
+      // 创建一个几乎听不到的振荡器
+      if (this.silentOscillator) {
+        this.silentOscillator.stop();
+      }
+
+      this.silentOscillator = this.audioContext.createOscillator();
+      const silentGain = this.audioContext.createGain();
+      silentGain.gain.value = 0.001; // 几乎静音
+
+      this.silentOscillator.connect(silentGain);
+      silentGain.connect(this.audioContext.destination);
+      this.silentOscillator.frequency.value = 1; // 1Hz，人耳听不到
+      this.silentOscillator.start();
+
+      console.log('Silent oscillator started');
+    } catch (e) {
+      console.log('Failed to start silent oscillator:', e);
+    }
+  }
+
+  // 停止静音振荡器
+  stopSilentOscillator() {
+    if (this.silentOscillator) {
+      try {
+        this.silentOscillator.stop();
+        this.silentOscillator = null;
+      } catch (e) {}
+    }
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
     }
   }
 
@@ -1050,8 +1137,11 @@ class MusicPlayer {
     }
     this.updatePositionState();
 
-    // iOS 后台播放: 激活静音音频保持会话
-    this.activateSilentAudio();
+    // iOS 后台播放: 激活所有保活机制
+    if (this.isIOS) {
+      this.activateSilentAudio();
+      this.keepAudioAlive();
+    }
 
     // 请求 Wake Lock
     if (this.isIOS || 'wakeLock' in navigator) {
@@ -1070,8 +1160,9 @@ class MusicPlayer {
     }
     this.stopVisualizer();
 
-    // iOS 后台播放: 停用静音音频
+    // iOS 后台播放: 停用静音音频和振荡器
     this.deactivateSilentAudio();
+    this.stopSilentOscillator();
   }
 
   onError(e) {
