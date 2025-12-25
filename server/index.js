@@ -114,6 +114,12 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// 服务器本地音乐目录（可以通过环境变量配置）
+const libraryDir = process.env.MUSIC_LIBRARY || path.join(__dirname, '../library');
+if (!fs.existsSync(libraryDir)) {
+  fs.mkdirSync(libraryDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
@@ -2294,14 +2300,6 @@ app.get('/api/playlist/load', (req, res) => {
 });
 
 // ==================== 服务器音乐库 ====================
-// 服务器本地音乐目录（可以通过环境变量配置）
-const libraryDir = process.env.MUSIC_LIBRARY || path.join(__dirname, '../library');
-
-// 确保音乐库目录存在
-if (!fs.existsSync(libraryDir)) {
-  fs.mkdirSync(libraryDir, { recursive: true });
-  console.log(`音乐库目录已创建: ${libraryDir}`);
-}
 
 // 递归扫描目录获取所有音乐文件
 function scanMusicLibrary(dir, baseDir = dir) {
