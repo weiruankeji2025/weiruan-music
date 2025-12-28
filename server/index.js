@@ -253,20 +253,19 @@ app.get('/api/music/:filename', (req, res) => {
     'X-Content-Type-Options': 'nosniff'
   };
 
-  // 流配置 - 优化 iOS 播放
+  // 流配置 - 优化播放速度
   const streamOptions = {
-    highWaterMark: 64 * 1024 // 64KB 块大小，平衡速度和内存
+    highWaterMark: 128 * 1024 // 128KB 块大小，提高传输效率
   };
 
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
-    // iOS 首次请求优化：如果没有指定结束位置，返回较小的初始块以快速开始播放
     let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
-    // 首次请求（从0开始且未指定结束）时，限制初始块大小以加快播放开始
-    if (start === 0 && !parts[1] && fileSize > 512 * 1024) {
-      end = Math.min(512 * 1024 - 1, fileSize - 1); // 首次最多512KB
+    // 首次请求优化：快速返回小块数据让播放立即开始
+    if (start === 0 && !parts[1] && fileSize > 256 * 1024) {
+      end = Math.min(256 * 1024 - 1, fileSize - 1); // 首次256KB，更快开始播放
     }
 
     const chunksize = (end - start) + 1;
@@ -1412,9 +1411,9 @@ app.get('/api/local/stream', async (req, res) => {
       'X-Content-Type-Options': 'nosniff'
     };
 
-    // 流配置 - 优化 iOS 播放
+    // 流配置 - 优化播放速度
     const streamOptions = {
-      highWaterMark: 64 * 1024 // 64KB 块大小
+      highWaterMark: 128 * 1024 // 128KB 块大小，提高传输效率
     };
 
     const range = req.headers.range;
@@ -1424,9 +1423,9 @@ app.get('/api/local/stream', async (req, res) => {
       const start = parseInt(parts[0], 10);
       let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
-      // iOS 首次请求优化
-      if (start === 0 && !parts[1] && fileSize > 512 * 1024) {
-        end = Math.min(512 * 1024 - 1, fileSize - 1);
+      // 首次请求优化：快速返回小块数据让播放立即开始
+      if (start === 0 && !parts[1] && fileSize > 256 * 1024) {
+        end = Math.min(256 * 1024 - 1, fileSize - 1); // 首次256KB
       }
 
       const chunkSize = (end - start) + 1;
