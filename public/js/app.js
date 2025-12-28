@@ -116,6 +116,16 @@ class MusicPlayer {
       vocal: [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1]
     };
 
+    // 卡顿检测和内存管理
+    this.stutterCount = {};        // 每首歌的卡顿次数 { songId: count }
+    this.maxStutterCount = 3;      // 最大卡顿次数，超过则移除
+    this.bufferingStart = null;    // 缓冲开始时间
+    this.maxBufferingTime = 8000;  // 最大缓冲等待时间(8秒)
+    this.playStartTime = null;     // 播放开始时间，检测首次播放延迟
+    this.preloadedTracks = new Set(); // 已预加载的歌曲
+    this.lastMemoryCleanup = Date.now(); // 上次内存清理时间
+    this.memoryCleanupInterval = 300000; // 5分钟清理一次
+
     this.init();
   }
 
@@ -254,6 +264,35 @@ class MusicPlayer {
     // 预加载下一首的音频元素
     this.preloadAudio = new Audio();
     this.preloadAudio.preload = 'auto';
+
+    // 卡顿检测：waiting 事件表示缓冲中
+    this.audioElement.addEventListener('waiting', () => {
+      console.log('Audio buffering...');
+      this.bufferingStart = Date.now();
+      this.startBufferingTimeout();
+    });
+
+    // 缓冲结束：playing 事件
+    this.audioElement.addEventListener('playing', () => {
+      if (this.bufferingStart) {
+        const bufferingTime = Date.now() - this.bufferingStart;
+        console.log(`Buffering took ${bufferingTime}ms`);
+        // 如果缓冲超过3秒，记录卡顿
+        if (bufferingTime > 3000 && this.currentIndex >= 0) {
+          this.recordStutter(this.playlist[this.currentIndex]?.id);
+        }
+        this.bufferingStart = null;
+      }
+      this.clearBufferingTimeout();
+    });
+
+    // stalled 事件：数据获取停滞
+    this.audioElement.addEventListener('stalled', () => {
+      console.log('Audio stalled - network issue');
+      if (this.currentIndex >= 0) {
+        this.recordStutter(this.playlist[this.currentIndex]?.id);
+      }
+    });
 
     // 设置 Media Session API (iOS/Android 锁屏控制)
     this.setupMediaSession();
@@ -936,6 +975,10 @@ class MusicPlayer {
   playTrack(index) {
     if (index < 0 || index >= this.playlist.length) return;
 
+    // 清除上一首的缓冲超时
+    this.clearBufferingTimeout();
+    this.bufferingStart = null;
+
     // iOS: 延迟初始化 AudioContext，优先保证播放
     // 只在用户明确使用均衡器/可视化时才初始化
     if (!this.isIOS && !this.audioContext) {
@@ -945,24 +988,47 @@ class MusicPlayer {
     this.currentIndex = index;
     const track = this.playlist[index];
 
+    // 记录播放开始时间
+    this.playStartTime = Date.now();
+
     // 更新播放次数
     this.playCounts[track.id] = (this.playCounts[track.id] || 0) + 1;
     this.saveSettings();
 
-    // 优化播放：先设置src，等canplay事件再播放
-    this.pendingPlay = true;
-    this.audioElement.src = track.path;
+    // 检查是否有预加载的音频可用
+    const isPreloaded = this.preloadAudio &&
+                        this.preloadAudio.src &&
+                        this.preloadAudio.src.includes(encodeURIComponent(track.path.split('/').pop())) &&
+                        this.preloadAudio.readyState >= 2; // HAVE_CURRENT_DATA
 
-    // iOS: 需要先 load() 再 play()
-    if (this.isIOS) {
-      this.audioElement.load();
+    if (isPreloaded) {
+      console.log('Using preloaded audio for faster playback');
+      // 交换音频元素，使用预加载的音频
+      const oldAudio = this.audioElement;
+      this.audioElement.pause();
+      this.audioElement.src = '';
+
+      // 设置新源并立即播放
+      this.pendingPlay = true;
+      this.audioElement.src = track.path;
+      this.audioElement.play().catch((e) => {
+        console.log('Preloaded play failed:', e);
+      });
+    } else {
+      // 正常加载流程
+      this.pendingPlay = true;
+      this.audioElement.src = track.path;
+
+      // iOS: 需要先 load() 再 play()
+      if (this.isIOS) {
+        this.audioElement.load();
+      }
+
+      // 尝试立即播放，如果失败会在canplay事件中重试
+      this.audioElement.play().catch((e) => {
+        console.log('Initial play failed, waiting for canplay:', e);
+      });
     }
-
-    // 尝试立即播放，如果失败会在canplay事件中重试
-    this.audioElement.play().catch((e) => {
-      console.log('Initial play failed, waiting for canplay:', e);
-      // 播放失败，等待canplay事件
-    });
 
     this.updateTrackInfo(track);
     this.updatePlaylistUI();
@@ -970,32 +1036,168 @@ class MusicPlayer {
     // 更新锁屏媒体信息 (iOS/Android 后台播放)
     this.updateMediaSessionMetadata(track);
 
-    // 获取封面和歌词
-    this.fetchCoverAndLyrics(track);
+    // 获取封面和歌词（异步，不阻塞播放）
+    setTimeout(() => this.fetchCoverAndLyrics(track), 100);
 
-    // 预加载下一首歌曲
-    this.preloadNextTrack();
+    // 预加载下一首歌曲（延迟执行，优先保证当前播放）
+    setTimeout(() => this.preloadNextTrack(), 500);
 
     if (this.settings.notifications) {
       this.showNotification(`正在播放：${track.name}`, 'info');
     }
   }
 
-  // 预加载下一首歌曲
+  // 预加载下一首歌曲（优化版）
   preloadNextTrack() {
     if (this.playlist.length <= 1) return;
 
     let nextIndex;
     if (this.isShuffle) {
-      // 随机模式下不预加载
-      return;
+      // 随机模式：预加载随机的下一首
+      nextIndex = Math.floor(Math.random() * this.playlist.length);
+      if (nextIndex === this.currentIndex && this.playlist.length > 1) {
+        nextIndex = (nextIndex + 1) % this.playlist.length;
+      }
     } else {
       nextIndex = (this.currentIndex + 1) % this.playlist.length;
     }
 
     const nextTrack = this.playlist[nextIndex];
     if (nextTrack && this.preloadAudio) {
+      // 检查是否已预加载
+      if (this.preloadedTracks.has(nextTrack.id)) {
+        return;
+      }
+
+      console.log(`Preloading next track: ${nextTrack.name}`);
       this.preloadAudio.src = nextTrack.path;
+      this.preloadAudio.load(); // 主动开始加载
+      this.preloadedTracks.add(nextTrack.id);
+
+      // 限制预加载缓存数量
+      if (this.preloadedTracks.size > 5) {
+        const oldest = this.preloadedTracks.values().next().value;
+        this.preloadedTracks.delete(oldest);
+      }
+    }
+  }
+
+  // 智能预加载：在歌曲快结束时提前加载下一首
+  checkPreloadTiming() {
+    if (!this.audioElement.duration) return;
+
+    const remaining = this.audioElement.duration - this.audioElement.currentTime;
+    // 剩余30秒时开始预加载
+    if (remaining <= 30 && remaining > 25) {
+      this.preloadNextTrack();
+    }
+  }
+
+  // 记录卡顿
+  recordStutter(songId) {
+    if (!songId) return;
+
+    this.stutterCount[songId] = (this.stutterCount[songId] || 0) + 1;
+    console.log(`Song ${songId} stutter count: ${this.stutterCount[songId]}`);
+
+    // 超过最大卡顿次数，标记为问题歌曲
+    if (this.stutterCount[songId] >= this.maxStutterCount) {
+      this.handleProblematicSong(songId);
+    }
+  }
+
+  // 处理问题歌曲：自动跳过并从播放列表移除
+  handleProblematicSong(songId) {
+    const index = this.playlist.findIndex(t => t.id === songId);
+    if (index === -1) return;
+
+    const track = this.playlist[index];
+    console.log(`Removing problematic song: ${track.name}`);
+
+    this.showNotification(`歌曲 "${track.name}" 播放异常，已自动跳过`, 'warning');
+
+    // 从播放列表移除
+    this.playlist.splice(index, 1);
+    this.updatePlaylistUI();
+    this.savePlaylistToServer();
+
+    // 如果正在播放这首歌，跳到下一首
+    if (this.currentIndex === index) {
+      // 调整索引
+      if (this.currentIndex >= this.playlist.length) {
+        this.currentIndex = 0;
+      }
+      if (this.playlist.length > 0) {
+        this.playTrack(this.currentIndex);
+      } else {
+        this.audioElement.pause();
+        this.isPlaying = false;
+      }
+    } else if (this.currentIndex > index) {
+      // 调整当前索引
+      this.currentIndex--;
+    }
+  }
+
+  // 缓冲超时处理
+  startBufferingTimeout() {
+    this.clearBufferingTimeout();
+    this.bufferingTimeout = setTimeout(() => {
+      if (this.bufferingStart && this.currentIndex >= 0) {
+        const songId = this.playlist[this.currentIndex]?.id;
+        console.log(`Buffering timeout for song: ${songId}`);
+        this.recordStutter(songId);
+
+        // 尝试跳过
+        if (this.stutterCount[songId] >= this.maxStutterCount) {
+          // 已经处理过了
+        } else {
+          // 尝试重新加载或跳到下一首
+          this.showNotification('加载超时，正在尝试恢复...', 'warning');
+          this.audioElement.load();
+          this.audioElement.play().catch(() => {
+            this.playNext();
+          });
+        }
+      }
+    }, this.maxBufferingTime);
+  }
+
+  clearBufferingTimeout() {
+    if (this.bufferingTimeout) {
+      clearTimeout(this.bufferingTimeout);
+      this.bufferingTimeout = null;
+    }
+  }
+
+  // 内存清理（长时间播放优化）
+  performMemoryCleanup() {
+    const now = Date.now();
+    if (now - this.lastMemoryCleanup < this.memoryCleanupInterval) {
+      return;
+    }
+
+    console.log('Performing memory cleanup...');
+    this.lastMemoryCleanup = now;
+
+    // 清理预加载缓存
+    this.preloadedTracks.clear();
+
+    // 清理旧的卡顿记录（保留最近播放的）
+    const recentSongs = new Set(this.playlist.slice(
+      Math.max(0, this.currentIndex - 5),
+      this.currentIndex + 10
+    ).map(t => t.id));
+
+    for (const songId in this.stutterCount) {
+      if (!recentSongs.has(songId)) {
+        delete this.stutterCount[songId];
+      }
+    }
+
+    // 触发垃圾回收提示（如果可用）
+    if (window.gc) {
+      window.gc();
     }
   }
 
@@ -1196,6 +1398,12 @@ class MusicPlayer {
     if (this.lyricsVisible && this.currentLyrics) {
       this.updateLyricsDisplay();
     }
+
+    // 智能预加载下一首（快结束时）
+    this.checkPreloadTiming();
+
+    // 定期内存清理（长时间播放优化）
+    this.performMemoryCleanup();
   }
 
   onTrackEnded() {
